@@ -3,8 +3,12 @@ import sys
 
 import numpy as np
 from loguru import logger
+import cv2
+
 logger.remove()  # Remove the default logger
 logger.add(sys.stderr, level="TRACE")
+log_file = "E2CR.log"
+logger.add(os.path.join(".", log_file), format="{time: >14.4f} | {level} | {message}", level="TRACE", rotation="100 MB", compression="zip")
 
 cwd = os.getcwd()
 
@@ -40,46 +44,29 @@ class E2CR:
     ATHRESH =   0b0100
     BLUR =      0b1000
 
-class DefaultSeg:
-    EXPECTED_IMAGE_HW = 30
+class SEG_DEFAULT:
+    EXPECTED_IMAGE_HW = 45
+    THRESH_RATE = .96
+    IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
+    OUTPUT_PATH = os.path.join(os.getcwd(),'output')
+    INPUT_PATH = os.path.join(os.getcwd(),'sample_images_for_ocr','onetime')
+
+
+
 
 class PreProcessing:
     APPLY_ERODE = False
     erodeKernel = np.array([[0, 0, 0], [0, 3, 0], [0, 0, 0]],dtype=np.uint8)
+    #erodeKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     threshold = 180
     APPLY_ADAPTIVE_THRESHOLD = True
     APPLY_DILATION = False
     DILATE_KERNEL = (2,3)
     APPLY_DENOIS = True
+    APPLY_MORPHOLOGY = False
 
 
-def create_unique_filepath(path):
-    """
-    Ensure necessary folders are created for the given path. If it's a file path,
-    handle the situation where the file already exists by appending a number at the end.
 
-    Args:
-        path (str): The desired file or folder path.
 
-    Returns:
-        str: The unique file path with necessary folders created.
-    """
-    # Check if the path is a file or a directory
-    base, extension = os.path.splitext(path)
-    if extension:  # It's a file path
-        directory = os.path.dirname(path)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-        
-        # Check if file already exists and create a unique file path
-        counter = 1
-        new_filepath = path
-        while os.path.exists(new_filepath):
-            new_filepath = f"{base}_{counter}{extension}"
-            counter += 1
-        
-        return new_filepath
-    else:  # It's a directory path
-        os.makedirs(path, exist_ok=True)
-        return path
+
 

@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from e2cr_plotting import *
+from plotting import *
 from itertools import groupby
 from scipy.signal import find_peaks
 import jenkspy

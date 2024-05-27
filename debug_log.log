@@ -1,0 +1,258 @@
+2024-05-25T19:40:56.168677-0400 INFO Loading image...
+2024-05-25T19:40:56.176678-0400 DEBUG Image loaded.
+2024-05-25T19:40:56.177679-0400 INFO Preprocessing image...
+2024-05-25T19:40:56.191719-0400 ERROR An error has been caught in function '<module>', process 'MainProcess' (13692), thread 'MainThread' (25936):
+Traceback (most recent call last):
+
+> File "E:\E2CR\test.py", line 71, in <module>
+    preprocessed_image = preprocess_image(new_image)
+                         │                └ None
+                         └ <function preprocess_image at 0x000001A186180F40>
+
+  File "E:\E2CR\test.py", line 12, in preprocess_image
+    binary_image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                   │   │                 │           │   │                           │   └ 0
+                   │   │                 │           │   │                           └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+                   │   │                 │           │   └ 1
+                   │   │                 │           └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+                   │   │                 └ None
+                   │   └ <built-in function adaptiveThreshold>
+                   └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+
+cv2.error: OpenCV(4.9.0) D:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\smooth.dispatch.cpp:617: error: (-215:Assertion failed) !_src.empty() in function 'cv::GaussianBlur'
+
+2024-05-25T19:40:56.199678-0400 ERROR An error has been caught in function '<module>', process 'MainProcess' (13692), thread 'MainThread' (25936):
+Traceback (most recent call last):
+
+> File "E:\E2CR\test.py", line 72, in <module>
+    clean_image = remove_noise(preprocessed_image)
+                  │            └ None
+                  └ <function remove_noise at 0x000001A186181300>
+
+  File "E:\E2CR\test.py", line 20, in remove_noise
+    clean_image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+                  │   │            │      │   │           └ array([[1]], dtype=uint8)
+                  │   │            │      │   └ 2
+                  │   │            │      └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+                  │   │            └ None
+                  │   └ <built-in function morphologyEx>
+                  └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+
+cv2.error: OpenCV(4.9.0) D:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\morph.dispatch.cpp:1163: error: (-215:Assertion failed) !_src.empty() in function 'cv::morphologyEx'
+
+2024-05-25T19:40:56.204679-0400 DEBUG Image preprocessed.
+2024-05-25T19:40:56.204679-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:40:56.205678-0400 ERROR An error has been caught in function '<module>', process 'MainProcess' (13692), thread 'MainThread' (25936):
+Traceback (most recent call last):
+
+> File "E:\E2CR\test.py", line 76, in <module>
+    y_values = find_starting_y_values(clean_image)
+               │                      └ None
+               └ <function find_starting_y_values at 0x000001A1861816C0>
+
+  File "E:\E2CR\test.py", line 28, in find_starting_y_values
+    height, width = image.shape
+                    └ None
+
+AttributeError: 'NoneType' object has no attribute 'shape'
+2024-05-25T19:40:56.208678-0400 INFO Drawing lines on the image...
+2024-05-25T19:40:56.209703-0400 ERROR An error has been caught in function '<module>', process 'MainProcess' (13692), thread 'MainThread' (25936):
+Traceback (most recent call last):
+
+> File "E:\E2CR\test.py", line 80, in <module>
+    line_image = draw_lines_on_image(new_image, y_values)
+                 │                   │          └ None
+                 │                   └ None
+                 └ <function draw_lines_on_image at 0x000001A186181A80>
+
+  File "E:\E2CR\test.py", line 57, in draw_lines_on_image
+    line_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                 │   │        │      │   └ 8
+                 │   │        │      └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+                 │   │        └ None
+                 │   └ <built-in function cvtColor>
+                 └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+
+cv2.error: OpenCV(4.9.0) D:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.cpp:196: error: (-215:Assertion failed) !_src.empty() in function 'cv::cvtColor'
+
+2024-05-25T19:41:46.971360-0400 INFO Loading image...
+2024-05-25T19:41:46.979358-0400 DEBUG Image loaded.
+2024-05-25T19:41:46.980358-0400 INFO Preprocessing image...
+2024-05-25T19:41:46.998334-0400 DEBUG Image binarization complete.
+2024-05-25T19:41:47.001370-0400 DEBUG Noise removal complete.
+2024-05-25T19:41:47.002335-0400 DEBUG Image preprocessed.
+2024-05-25T19:41:47.002335-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:41:54.339684-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:41:54.340684-0400 INFO Drawing lines on the image...
+2024-05-25T19:41:54.349699-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:42:19.057277-0400 INFO Loading image...
+2024-05-25T19:42:19.066275-0400 DEBUG Image loaded.
+2024-05-25T19:42:19.067238-0400 INFO Preprocessing image...
+2024-05-25T19:42:19.074273-0400 DEBUG Image binarization complete.
+2024-05-25T19:42:19.076274-0400 DEBUG Noise removal complete.
+2024-05-25T19:42:19.077239-0400 DEBUG Image preprocessed.
+2024-05-25T19:42:19.077239-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:42:25.867152-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:42:25.867662-0400 INFO Drawing lines on the image...
+2024-05-25T19:42:25.875668-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:44:19.898294-0400 INFO Loading image...
+2024-05-25T19:44:19.910296-0400 CRITICAL Pre-Processing recieved no image: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 1
+
+2024-05-25T19:44:19.911299-0400 DEBUG Image loaded.
+2024-05-25T19:44:19.912296-0400 INFO Preprocessing image...
+2024-05-25T19:44:19.920293-0400 DEBUG Image binarization complete.
+2024-05-25T19:44:19.924295-0400 DEBUG Noise removal complete.
+2024-05-25T19:44:19.925294-0400 DEBUG Image preprocessed.
+2024-05-25T19:44:19.925294-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:45:18.822174-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:45:18.823174-0400 INFO Drawing lines on the image...
+2024-05-25T19:45:18.830176-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:46:40.319912-0400 INFO Loading image...
+2024-05-25T19:46:40.328929-0400 CRITICAL Pre-Processing recieved no image: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 1
+
+2024-05-25T19:46:40.330891-0400 DEBUG Image loaded.
+2024-05-25T19:46:40.331893-0400 INFO Preprocessing image...
+2024-05-25T19:46:40.337928-0400 DEBUG Image binarization complete.
+2024-05-25T19:46:40.340891-0400 DEBUG Noise removal complete.
+2024-05-25T19:46:40.341892-0400 DEBUG Image preprocessed.
+2024-05-25T19:46:40.341892-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:46:43.143952-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:46:46.441306-0400 INFO Drawing lines on the image...
+2024-05-25T19:46:46.448284-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:48:57.537307-0400 INFO Loading image...
+2024-05-25T19:48:57.557309-0400 CRITICAL Pre-Processing recieved no image: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 1
+
+2024-05-25T19:48:57.559307-0400 DEBUG Image loaded.
+2024-05-25T19:48:57.559307-0400 INFO Preprocessing image...
+2024-05-25T19:48:57.567307-0400 DEBUG Image binarization complete.
+2024-05-25T19:48:57.570307-0400 DEBUG Noise removal complete.
+2024-05-25T19:48:57.571307-0400 DEBUG Image preprocessed.
+2024-05-25T19:48:57.572307-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:49:07.462834-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:49:07.463849-0400 INFO Drawing lines on the image...
+2024-05-25T19:49:07.476839-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:50:00.509438-0400 INFO Loading image...
+2024-05-25T19:50:00.529439-0400 CRITICAL Pre-Processing recieved no image: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 1
+
+2024-05-25T19:50:00.531441-0400 DEBUG Image loaded.
+2024-05-25T19:50:00.532441-0400 INFO Preprocessing image...
+2024-05-25T19:50:00.536441-0400 DEBUG Noise removal complete.
+2024-05-25T19:50:00.537441-0400 DEBUG Image preprocessed.
+2024-05-25T19:50:00.537441-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:50:03.338558-0400 DEBUG Found starting y-values: [323, 325, 356, 413, 433, 449, 480, 486, 488, 517, 525, 553, 555, 557, 560, 564, 599, 603, 606, 637, 639, 654, 656, 658, 662, 664, 666, 676, 693, 697, 706, 717, 719, 722, 734, 736, 743, 769, 774, 777, 856, 859, 907, 933, 939, 949, 993, 1000, 1025, 1029, 1034, 1036, 1043, 1066, 1069, 1074, 1109, 1118, 1123, 1126, 1129, 1132, 1134, 1136, 1152, 1154, 1158, 1160, 1165, 1168, 1190, 1196, 1205, 1216, 1226, 1230, 1232, 1236, 1240, 1244, 1246, 1273, 1293, 1308, 1310, 1320, 1336, 1341, 1347, 1352, 1355, 1360, 1365, 1392, 1399, 1401, 1448, 1453, 1485, 1492, 1495, 1519, 1530]
+2024-05-25T19:50:03.340561-0400 INFO Drawing lines on the image...
+2024-05-25T19:50:03.352561-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:51:41.433180-0400 INFO Loading image...
+2024-05-25T19:51:41.455144-0400 CRITICAL Pre-Processing recieved no image: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 1
+
+2024-05-25T19:51:41.461146-0400 DEBUG Image loaded.
+2024-05-25T19:51:41.462145-0400 INFO Preprocessing image...
+2024-05-25T19:51:41.466144-0400 DEBUG Noise removal complete.
+2024-05-25T19:51:41.467144-0400 DEBUG Image preprocessed.
+2024-05-25T19:51:41.468145-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:51:49.958677-0400 DEBUG Found starting y-values: [323, 325, 356, 413, 433, 449, 480, 486, 488, 517, 525, 553, 555, 557, 560, 564, 599, 603, 606, 637, 639, 654, 656, 658, 662, 664, 666, 676, 693, 697, 706, 717, 719, 722, 734, 736, 743, 769, 774, 777, 856, 859, 907, 933, 939, 949, 993, 1000, 1025, 1029, 1034, 1036, 1043, 1066, 1069, 1074, 1109, 1118, 1123, 1126, 1129, 1132, 1134, 1136, 1152, 1154, 1158, 1160, 1165, 1168, 1190, 1196, 1205, 1216, 1226, 1230, 1232, 1236, 1240, 1244, 1246, 1273, 1293, 1308, 1310, 1320, 1336, 1341, 1347, 1352, 1355, 1360, 1365, 1392, 1399, 1401, 1448, 1453, 1485, 1492, 1495, 1519, 1530]
+2024-05-25T19:51:49.960676-0400 INFO Drawing lines on the image...
+2024-05-25T19:51:49.970682-0400 DEBUG Lines drawn on the image.
+2024-05-25T19:53:07.586881-0400 INFO Loading image...
+2024-05-25T19:53:07.708845-0400 INFO using adaptiveThreshold, maxValue:{255}, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blocksize:{21}, C:{4}
+2024-05-25T19:53:07.784844-0400 DEBUG Image loaded.
+2024-05-25T19:53:07.785846-0400 INFO Preprocessing image...
+2024-05-25T19:53:07.788845-0400 DEBUG Noise removal complete.
+2024-05-25T19:53:07.789845-0400 DEBUG Image preprocessed.
+2024-05-25T19:53:07.790847-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:53:11.929519-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:53:11.930519-0400 INFO Drawing lines on the image...
+2024-05-25T19:53:11.942553-0400 ERROR An error has been caught in function '<module>', process 'MainProcess' (30880), thread 'MainThread' (36716):
+Traceback (most recent call last):
+
+> File "E:\E2CR\test.py", line 90, in <module>
+    line_image = draw_lines_on_image(new_image, y_values)
+                 │                   │          └ [0]
+                 │                   └ array([[[196, 196, 196],
+                 │                             [198, 198, 198],
+                 │                             [200, 200, 200],
+                 │                             ...,
+                 │                             [196, 196, 196],
+                 │                             [196...
+                 └ <function draw_lines_on_image at 0x000001EC412D71A0>
+
+  File "E:\E2CR\test.py", line 58, in draw_lines_on_image
+    line_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                 │   │        │      │   └ 8
+                 │   │        │      └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+                 │   │        └ array([[[196, 196, 196],
+                 │   │                  [198, 198, 198],
+                 │   │                  [200, 200, 200],
+                 │   │                  ...,
+                 │   │                  [196, 196, 196],
+                 │   │                  [196...
+                 │   └ <built-in function cvtColor>
+                 └ <module 'cv2' from 'c:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\cv2\\__init__.py'>
+
+cv2.error: OpenCV(4.9.0) d:\a\opencv-python\opencv-python\opencv\modules\imgproc\src\color.simd_helpers.hpp:92: error: (-2:Unspecified error) in function '__cdecl cv::impl::`anonymous-namespace'::CvtHelper<struct cv::impl::`anonymous namespace'::Set<1,-1,-1>,struct cv::impl::A0x59191d0d::Set<3,4,-1>,struct cv::impl::A0x59191d0d::Set<0,2,5>,4>::CvtHelper(const class cv::_InputArray &,const class cv::_OutputArray &,int)'
+> Invalid number of channels in input image:
+>     'VScn::contains(scn)'
+> where
+>     'scn' is 3
+
+2024-05-25T19:55:26.735427-0400 INFO Loading image...
+2024-05-25T19:55:26.881440-0400 INFO using adaptiveThreshold, maxValue:{255}, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blocksize:{21}, C:{4}
+2024-05-25T19:55:26.991426-0400 DEBUG Image loaded.
+2024-05-25T19:55:26.992426-0400 INFO Preprocessing image...
+2024-05-25T19:55:26.996396-0400 DEBUG Noise removal complete.
+2024-05-25T19:55:26.997392-0400 DEBUG Image preprocessed.
+2024-05-25T19:55:26.997392-0400 INFO Finding starting y-values for text lines...
+2024-05-25T19:55:29.454400-0400 DEBUG Found starting y-values: [0]
+2024-05-25T19:55:29.456403-0400 INFO Drawing lines on the image...
+2024-05-25T19:55:29.458401-0400 DEBUG Lines drawn on the image.
+2024-05-25T20:00:05.212945-0400 INFO Loading image...
+2024-05-25T20:00:05.357908-0400 INFO using adaptiveThreshold, maxValue:{255}, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blocksize:{21}, C:{4}
+2024-05-25T20:00:05.428910-0400 DEBUG Image loaded.
+2024-05-25T20:00:05.429944-0400 INFO Preprocessing image...
+2024-05-25T20:00:05.432946-0400 DEBUG Noise removal complete.
+2024-05-25T20:00:05.432946-0400 DEBUG Image preprocessed.
+2024-05-25T20:00:05.433947-0400 INFO Finding starting y-values for text lines...
+2024-05-25T20:00:05.839780-0400 DEBUG recieved 24 break points; eps=40, min_samples=1
+2024-05-25T20:00:05.840795-0400 DEBUG Break Points: [   7   43   46  131  170  212  215  254  259  294  297  337  384  395
+  398  791  834  838  883  970 1052 1055 1441 1483]
+2024-05-25T20:00:05.842805-0400 DEBUG recieved 24 break points, Returning 11 clusters; eps=40, min_samples=1, effective loss=95.83.
+2024-05-25T20:00:05.843770-0400 DEBUG Clusters: [[7, 43, 46], [131, 170], [212, 215, 254, 259, 294, 297, 337], [384, 395, 398], [791], [834, 838], [883], [970], [1052, 1055], [1441], [1483]]
+2024-05-25T20:00:05.845772-0400 INFO Drawing lines on the image...
+2024-05-25T20:00:05.847772-0400 DEBUG Lines drawn on the image.
+2024-05-25T20:01:18.100639-0400 INFO Loading image...
+2024-05-25T20:01:18.239654-0400 INFO using adaptiveThreshold, maxValue:{255}, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blocksize:{21}, C:{4}
+2024-05-25T20:01:18.314601-0400 DEBUG Image loaded.
+2024-05-25T20:01:18.315601-0400 INFO Preprocessing image...
+2024-05-25T20:01:18.318601-0400 DEBUG Noise removal complete.
+2024-05-25T20:01:18.318601-0400 DEBUG Image preprocessed.
+2024-05-25T20:01:18.319602-0400 INFO Finding starting y-values for text lines...
+2024-05-25T20:01:18.688603-0400 DEBUG recieved 59 break points; eps=40, min_samples=1
+2024-05-25T20:01:18.689604-0400 DEBUG Break Points: [   7   43   46   91  123  131  138  170  212  215  254  259  294  297
+  337  384  395  398  421  426  461  464  473  549  584  711  791  801
+  828  834  838  877  883  893  897  927  929  970 1011 1013 1017 1052
+ 1055 1102 1146 1180 1185 1218 1311 1349 1354 1398 1441 1483 1495 1518
+ 1524 1527 1529]
+2024-05-25T20:01:18.693638-0400 DEBUG recieved 59 break points, Returning 15 clusters; eps=40, min_samples=1, effective loss=89.83.
+2024-05-25T20:01:18.694637-0400 DEBUG Clusters: [[7, 43, 46], [91, 123, 131, 138, 170], [212, 215, 254, 259, 294, 297, 337], [384, 395, 398, 421, 426, 461, 464, 473], [549, 584], [711], [791, 801, 828, 834, 838, 877, 883, 893, 897, 927, 929], [970], [1011, 1013, 1017, 1052, 1055], [1102], [1146, 1180, 1185, 1218], [1311, 1349, 1354], [1398], [1441], [1483, 1495, 1518, 1524, 1527, 1529]]
+2024-05-25T20:01:18.697603-0400 INFO Drawing lines on the image...
+2024-05-25T20:01:18.698604-0400 DEBUG Lines drawn on the image.
