@@ -1,30 +1,50 @@
 import cv2
 import numpy as np
-from plotting import *
 from scipy.signal import find_peaks
-#from common import *
-from imageman_manipulation import *
-from utils import *
+from common import *
 from sklearn.cluster import DBSCAN
-from scipy import stats
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 from loguru import logger
 from heapq import heappop, heappush
+import matplotlib.pyplot as plt
 
-def getImageHist(ImageToHist, axis, exclude_edges=0):
+
+def getLineStats(line):
+    """
+    Compute the minimum and maximum y-coordinates for a given line.
+
+    Args:
+        line (list of tuples): A line represented by a list of (y, x) points.
+
+    Returns:
+        tuple: Minimum and maximum y-coordinates of the line.
+    """
+    if not line:
+        raise ValueError("Line is empty")
+
+    min_y = min(y for y, x in line)
+    max_y = max(y for y, x in line)
+
+    return min_y, max_y
+
+
+def getImageHist(ImageToHist, axis):
     """
     Calculate the histogram or projection of an image across a given axis, excluding a certain number of pixels from the edges.
 
     Arguments:
     ImageToHist -- np.ndarray, the input image
-    axis -- int, the axis along which to calculate the projection (0 for vertical, 1 for horizontal)
+    axis -- str, the axis along which to calculate the projection ('x' for vertical, 'y' for horizontal)
     exclude_edges -- int, the number of pixels to exclude from the edges
 
     Returns:
     projection -- np.ndarray, the projection of the image along the specified axis
     """
-    # Add check here for a valid axis
+    logger.debug(f"Creating Image Projection")
+    
+    # Check if the input axis is valid
+    if axis not in ['x', 'y']:
+        logger.critical(f"Improper axis passed: {axis}")
+        raise ValueError(f"Improper axis passed: {axis}")
 
     # Check if the input image is grayscale; if not, convert it to grayscale
     if len(ImageToHist.shape) == 3:
@@ -32,31 +52,40 @@ def getImageHist(ImageToHist, axis, exclude_edges=0):
     else:
         gray_image = ImageToHist
 
-    # Exclude the specified number of pixels from the edges
-    if axis == 0:
-        cropped_image = gray_image[exclude_edges:gray_image.shape[0] - exclude_edges, :]
-    else:
-        cropped_image = gray_image[:, exclude_edges:gray_image.shape[1] - exclude_edges]
+    
 
     # Calculate the projection by summing pixel values along the specified axis
+    sum_axis = 1 if axis == 'y' else 0
+    projection = np.sum(ImageToHist, axis=sum_axis)
+    logger.trace(f"Projection: {projection}")
 
-    #cv2.imwrite(f"E:/E2CR_NM/output/projection)image.jpg", ImageToHist)
-    projection = np.sum(cropped_image, axis=axis)
-
-    ''' Plot the horizontal projection
-    plt.figure(figsize=(10, 5))
-    plt.title('Horizontal Projection (Row-wise Histogram)')
-    plt.plot(projection)
-    plt.xlabel('Row Index')
-    plt.ylabel('Sum of Pixel Values')
-    plt.show()
-    '''
+    max_value = np.max(projection)
+    max_index = np.argmax(projection)
+     # Plot the projection with max value annotation
+    if axis == 'z':
+        plt.figure(figsize=(10, 5))
+        plt.plot(projection, label='Projection')
+        plt.scatter([max_index], [max_value], color='red', zorder=5)
+        plt.text(max_index, max_value, f'Max: {max_value}', fontsize=12, verticalalignment='bottom', horizontalalignment='right')
+        plt.title(f'{axis.upper()} Projection ({"Row-wise" if axis == "y" else "Column-wise"} Histogram)')
+        plt.xlabel(f'{"Row" if axis == "y" else "Column"} Index')
+        plt.ylabel('Sum of Pixel Values')
+        plt.legend()
+        # Annotate the maximum x value on the plot
+        plt.annotate(f'Max X: {max_index}', 
+                 xy=(max_index, max_value), 
+                 xytext=(max_index, max_value + max_value * 0.1),
+                 arrowprops=dict(facecolor='black', shrink=0.05),
+                 horizontalalignment='center')
+    
+        plt.show()
+    
 
     return projection
 
 def find_high_points(data, threshold, distance=None, prominence=None) -> np.ndarray:
-    #print(f"{Colors.OKBLUE}\nE2CR Segmentation: Locating Maxima of {len(data)} points above {round(threshold,2)}{Colors.ENDC}")
-    #Xprint(f"{Colors.OKBLUE}\tthreshold={threshold}, distance={distance}, prominence={prominence}{Colors.ENDC}")
+    logger.debug(f"Locating Maxima of {len(data)} points above {round(threshold, 2)}")
+    logger.trace(f"threshold={threshold}, distance={distance}, prominence={prominence}")
     """
     Find high points (peaks) in the data that are above the specified threshold.
     
@@ -67,11 +96,20 @@ def find_high_points(data, threshold, distance=None, prominence=None) -> np.ndar
         prominence (float, optional): Required prominence of peaks.
     
     Returns:
-        list: Indices of high points (peaks) above the threshold.
+        np.ndarray: Indices of high points (peaks) above the threshold.
     """
-    peaks, _ = find_peaks(data, height=threshold, distance=distance, prominence=prominence)
+    peaks, properties = find_peaks(data, height=threshold, distance=distance, prominence=prominence)
     hp_loss = (1 - len(peaks) / len(data)) * 100
-    #print(f"{Colors.OKBLUE}E2CR Segmentation: Returning {len(peaks)} of {len(data)} points, loss: {hp_loss}%{Colors.ENDC}")
+
+    if len(peaks) == 0:
+        logger.warning(f"No peaks found above threshold {threshold}. Returning all indices of values above the threshold.")
+        peaks = np.where(data > threshold)[0]  # Return all indices where data is above threshold
+    elif hp_loss > 95:
+        logger.warning(f"Locating peaks resulted in too few break points, loss: {hp_loss}%. Returning all indices of values above the threshold.")
+        peaks = np.where(data > threshold)[0]  # Return all indices where data is above threshold
+    else:    
+        logger.trace(f"Returning {len(peaks)} of {len(data)} points, loss: {hp_loss:.2f}%")
+    
     return peaks 
 
 def group_by_proximity(data, eps, min_samples):
@@ -101,7 +139,7 @@ def group_by_proximity(data, eps, min_samples):
         return [], np.ndarray(1)
     
     logger.debug(f"Received {len(data)} break points; eps={eps}, min_samples={min_samples}")
-    logger.debug(f"Break Points: {data}")
+    logger.trace(f"Break Points: {data}")
 
     # Convert data to numpy array and reshape for DBSCAN
     data = np.array(data).reshape(-1, 1)
@@ -120,95 +158,9 @@ def group_by_proximity(data, eps, min_samples):
     # Calculate and log effective loss
     chp_loss = round((1 - len(clusters) / len(data)) * 100, 2)
     logger.debug(f"Returning {len(clusters)} clusters; eps={eps}, min_samples={min_samples}, effective loss={chp_loss}%.")
-    logger.debug(f"Clusters: {clusters}")
+    logger.trace(f"Clusters: {clusters}")
     
     return clusters, labels
-
-def find_breakpoints_max(clusters, imageHist):
-    """
-    Find the breakpoints in the clusters based on the highest value in imageHist coresponding to the indexes in the cluster.
-    
-    Args:
-        clusters (list): List of clusters.
-        imageHist (list or np.array): List of histogram values corresponding to the data indices.
-    
-    Returns:
-        list: A list of breakpoints.
-    """
-    logger.debug(f"recieved {len(clusters)}")
-    logger.trace(f"Cluster(s): {clusters}")
-
-    BreakPoints = []
-    BreakValues = []
-    for cluster in clusters:
-        max_value = -np.inf
-        index = 0
-        for i, value in enumerate(cluster):
-            if imageHist[value] > max_value:
-                max_value = imageHist[value]
-            index = i
-        BreakPoints.append(cluster[index])
-        BreakValues.append(imageHist[cluster[index]])
-
-    logger.debug(f"Found Max in {len(clusters)} Clusters, returning {len(BreakPoints)} break points.")
-    logger.trace(f"{len(BreakPoints)} Break Points: {BreakPoints}")
-    return BreakPoints, BreakValues
-
-def find_breakpoints_average(clusters,y_data):
-    """
-    Find the x value in each cluster that is closest to the average of all the y values for that cluster.
-    
-    Args:
-        y_data (list or np.array): List of y values corresponding to the data indices.
-        clusters (list): List of clusters.
-    
-    Returns:
-        list: A list of breakpoints.
-    """
-    def split_large_breaks(int_list, threshold):
-        # Initialize a list to hold the additional elements
-        additions = []
-
-        # Iterate through the list and check the distances
-        int_list.insert(0,0)
-        for i in range(len(int_list) - 1):
-            diff = abs(int_list[i + 1] - int_list[i])
-            if diff > threshold:
-                avg = int(round((int_list[i + 1] + int_list[i]) / 2,2))
-                print(f"Breaking {int_list[i + 1]} and {int_list[i]}")
-                additions.append(avg)
-
-        # Extend the original list with the new elements
-        int_list.extend(additions)
-
-        # Sort the list
-        sorted_list = sorted(int_list)
-        return sorted_list
-    
-    breakpoints = []
-     
-    for cluster in clusters:
-        y_values = [y_data[value] for value in cluster]
-        average_y = np.mean(y_values)
-        closest_value = min(cluster, key=lambda x: abs(y_data[x] - average_y))
-        breakpoints.append(closest_value)
-
-    breakpoints = split_large_breaks(breakpoints, SEG_DEFAULT.EXPECTED_IMAGE_HW * 2)
-    
-
-    differences = [breakpoints[i+1] - breakpoints[i] for i in range(len(breakpoints) - 1)]
-    '''
-    mean_diff = np.mean(differences)  
-    median_diff = np.median(differences)   
-    mode_diff = stats.mode(differences)[0]  # mode() returns a mode array
-    print(f"{Colors.OKBLUE}E2CR Segmentation: Average Break Points Statistics")
-    print("\tDifferences:", differences)
-    print("\tMean:", mean_diff)
-    print("\tMedian:", median_diff)
-    print("\tMode:", mode_diff, f"\n{Colors.ENDC}")   
-    '''
-
-    return breakpoints
     
 def find_shortest_path(image, gradients, y, log_cost_factor=15, bias_factor=10, gradient_factor=5):
     """
@@ -320,20 +272,329 @@ def calculate_gradients(image):
     
     return gradients
 
-def getLineStats(line):
+def split_large_breaks(int_list, threshold):
     """
-    Compute the minimum and maximum y-coordinates for a given line.
-
+    Split large breaks in the list based on the given threshold.
+    
     Args:
-        line (list of tuples): A line represented by a list of (y, x) points.
+        int_list (list of int): List of breakpoints.
+        threshold (int): Threshold value to determine large breaks.
+    
+    Returns:
+        list: A sorted list of breakpoints with large breaks split.
+    """
+    additions = []
+
+    # Insert a leading zero for correct initial diff calculation
+    int_list.insert(0, 0)
+    for i in range(len(int_list) - 1):
+        # Calculate the difference between consecutive breakpoints
+        diff = abs(int_list[i + 1] - int_list[i])
+        if diff > threshold:
+            # If the difference is larger than the threshold, calculate the midpoint
+            avg = int(round((int_list[i + 1] + int_list[i]) / 2, 0))
+            additions.append(avg)
+
+    # Remove the leading zero before extending
+    int_list.pop(0)
+    
+    # Extend the original list with the new elements
+    int_list.extend(additions)
+
+    # Sort the list
+    sorted_list = sorted(int_list)
+    logger.trace(f"Split large breaks with threshold {threshold}: {sorted_list}")
+    return sorted_list
+
+def find_breakpoints(clusters, data=None, method='index_average', threshold=50, split_large_breaks_flag=False):
+    """
+    Find breakpoints in clusters using the specified method ('y_max', 'y_average', or 'index_average').
+    
+    Args:
+        clusters (list of list of int): List of clusters, where each cluster is a list of indices.
+        data (list or np.array, optional): List of values corresponding to the data indices (histogram values or y values). Default is None.
+        method (str): Method to use for finding breakpoints ('y_max', 'y_average', or 'index_average'). Default is 'index_average'.
+        threshold (int): Threshold value to determine large breaks for the 'y_average' method.
+        split_large_breaks_flag (bool): Flag to determine if large breaks should be split.
+    
+    Returns:
+        list: A list of breakpoints.
+    """
+    breakpoints = []
+    logger.info(f"Starting breakpoint finding with method '{method}'")
+
+    if method == 'y_max':
+        if data is None:
+            raise ValueError("Data is required for method 'y_max'")
+        # Find breakpoints based on the maximum value in each cluster
+        for cluster in clusters:
+            if len(cluster) == 0:
+                continue
+            max_value = -np.inf
+            index = -1
+            for i in cluster:
+                if data[i] > max_value:
+                    max_value = data[i]
+                    index = i
+            breakpoints.append(index)
+        logger.debug(f"y_max method: Found {len(breakpoints)} breakpoints.")
+    elif method == 'y_average':
+        if data is None:
+            raise ValueError("Data is required for method 'y_average'")
+        # Find breakpoints based on the value closest to the average value in each cluster
+        for cluster in clusters:
+            y_values = [data[value] for value in cluster]
+            average_y = np.mean(y_values)
+            closest_value = min(cluster, key=lambda x: abs(data[x] - average_y))
+            breakpoints.append(closest_value)
+        logger.debug(f"y_average method: Found {len(breakpoints)} breakpoints.")
+    elif method == 'index_average':
+        # Find breakpoints based on the average of the actual indexes in each cluster
+        for cluster in clusters:
+            if len(cluster) == 0:
+                continue
+            average_index = int(round(np.mean(cluster)))
+            breakpoints.append(average_index)
+        logger.debug(f"index_average method: Found {len(breakpoints)} breakpoints.")
+    else:
+        raise ValueError("Invalid method. Use 'y_max', 'y_average', or 'index_average'.")
+
+    if split_large_breaks_flag:
+        original_breakpoints = breakpoints.copy()
+        breakpoints = split_large_breaks(breakpoints, threshold)
+        logger.info(f"Split large breaks: {original_breakpoints} -> {breakpoints}")
+
+    logger.success(f"Completed breakpoint finding with method '{method}'")
+    logger.trace(f"Final breakpoints: {breakpoints}")
+    return breakpoints
+
+def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=15, bias_factor=10, gradient_factor=5):
+    """
+    Find the shortest path in a binary image using a modified Dijkstra's algorithm with exponential and bias costs.
+
+    Arguments:
+    image -- np.ndarray, the binary image (Image must be grayscale with one channel)
+    gradients -- np.ndarray, the gradient magnitudes of the image
+    start -- int, the starting coordinate (row for y-axis, column for x-axis)
+    axis -- str, the axis along which to find the path ('y' for rows, 'x' for columns)
+    log_cost_factor -- float, the factor for logarithmic cost (penalizes vertical movements based on the exponential distance)
+    bias_factor -- float, the factor for bias cost (penalizes deviations from the starting row)
+    gradient_factor -- float, the factor for gradient cost (penalizes crossing high-gradient regions, discouraging the path from crossing text lines or words)
 
     Returns:
-        tuple: Minimum and maximum y-coordinates of the line.
+    path -- list of tuples, the sequence of points in the shortest path
     """
-    if not line:
-        raise ValueError("Line is empty")
+    logger.debug(f"Finding Shortest Path from: {start}")
+    logger.trace(f"start: {start}, axis={axis}, log_cost_factor={log_cost_factor}, bias_factor={bias_factor}, gradient_factor={gradient_factor}")
+    
+    if not (len(image.shape) == 2):
+        logger.critical("Image provided is not grayscale or has too many channels, exiting")
+        exit(100)
 
-    min_y = min(y for y, x in line)
-    max_y = max(y for y, x in line)
+    rows, cols = image.shape
 
-    return min_y, max_y
+    # Check if the start index is within valid bounds
+    if (axis == 'y' and (start < 0 or start >= rows)) or (axis == 'x' and (start < 0 or start >= cols)):
+        logger.critical(f"Start index {start} is out of bounds for axis '{axis}' with size {rows if axis == 'y' else cols}")
+        raise ValueError(f"Start index {start} is out of bounds for axis '{axis}' with size {rows if axis == 'y' else cols}")
+
+    if axis == 'y':
+        size1, size2 = rows, cols
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Directions: up, down, left, right
+    else:
+        size1, size2 = cols, rows
+        directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # Directions: left, right, up, down
+
+    logger.trace(f"size1: {size1}, size2: {size2}, directions: {directions}")
+
+    # Initialize distance and previous node arrays
+    dist = np.full((size1, size2), np.inf, dtype=np.float64)
+    prev = np.full((size1, size2), None, dtype=object)
+
+    # Set the starting distance and initialize the priority queue
+    if axis == 'y':
+        dist[start, 0] = float(image[start, 0])
+        queue = [(dist[start, 0], start, 0)]
+    else:
+        dist[0, start] = float(image[0, start])
+        queue = [(dist[0, start], 0, start)]
+
+
+    while queue:
+        curr_dist, pos1, pos2 = heappop(queue)
+        
+
+        if pos2 == size2 - 1:
+            logger.debug(f"Reached the end of the axis:{axis} at position: ({pos1}, {pos2})")
+            break
+
+        for d1, d2 in directions:
+            new_pos1, new_pos2 = pos1 + d1, pos2 + d2
+            if 0 <= new_pos1 < size1 and 0 <= new_pos2 < size2:
+                log_cost = log_cost_factor * np.log1p(abs(new_pos1 - pos1))
+                bias_cost = bias_factor * abs(new_pos1 - start)
+                grad_cost = gradient_factor * gradients[new_pos1, new_pos2] if axis == 'y' else gradients[new_pos2, new_pos1]
+                new_dist = curr_dist + (float(image[new_pos1, new_pos2]) if axis == 'y' else float(image[new_pos2, new_pos1])) + log_cost + bias_cost + grad_cost
+                
+                if new_dist < dist[new_pos1, new_pos2]:
+                    dist[new_pos1, new_pos2] = new_dist
+                    prev[new_pos1, new_pos2] = (pos1, pos2)
+                    heappush(queue, (new_dist, new_pos1, new_pos2))
+                    
+
+    path = []
+    min_dist = np.inf
+    min_pos1 = -1
+
+    for i in range(size1):
+        if dist[i, size2 - 1] < min_dist:
+            min_dist = dist[i, size2 - 1]
+            min_pos1 = i
+
+    if min_pos1 == -1:
+        logger.warning("No valid path found")
+        return path
+
+    logger.debug(f"Minimum distance at end of axis: {min_dist}, Position: {min_pos1}")
+
+    pos1, pos2 = min_pos1, size2 - 1
+
+    while (pos1, pos2) != (start, 0):
+        path.append((pos1, pos2) if axis == 'y' else (pos2, pos1))
+        pos1, pos2 = prev[pos1, pos2]
+        #logger.trace(f"Backtracking: current position ({pos1}, {pos2})")
+
+    path.append((start, 0) if axis == 'y' else (0, start))
+    path.reverse()
+
+    logger.debug(f"Path found for start point: {start}")
+
+    return path
+
+def findPaths(baseImage, threshRate=0.9, eps=20, min_samples=1, axis='y'):
+    """
+    Find paths in the binary image using thresholding, clustering, and shortest path algorithms.
+
+    Arguments:
+    baseImage -- np.ndarray, the input binary image
+    threshRate -- float, the threshold rate to determine break points
+    eps -- int, the maximum distance between two samples for one to be considered as in the neighborhood of the other (DBSCAN parameter)
+    min_samples -- int, the number of samples (or total weight) in a neighborhood for a point to be considered as a core point (DBSCAN parameter)
+    axis -- str, the axis along which to find paths ('y' for rows, 'x' for columns)
+
+    Returns:
+    paths_found -- list of lists of tuples, the found paths
+    """
+    height, width = baseImage.shape[:2]
+    logger.debug(f"Base image dimensions: height={height}, width={width}")
+
+    # Project Image
+    imageHist = getImageHist(baseImage, axis=axis)
+    logger.debug(f"Image histogram calculated along axis={axis}")
+
+    # Remove values below a threshold %
+    breakPointThresh = max(imageHist) * threshRate
+    logger.debug(f"Break point threshold set to: {breakPointThresh}")
+
+    peaks = find_high_points(imageHist, breakPointThresh)
+    logger.debug(f"Found peaks: {peaks}")
+
+    # Debugging: create image with initial break points
+    if DEBUG:
+        initImg = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
+        for peak in peaks:
+            if axis == 'y':
+                initImg = cv2.line(initImg, (0, peak), (initImg.shape[1], peak), color=(0, 0, 255), thickness=2)
+                cv2.putText(initImg, f"Yinit: {peak}", (5, peak - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 2)
+            else:
+                initImg = cv2.line(initImg, (peak, 0), (peak, initImg.shape[0]), color=(0, 0, 255), thickness=2)
+                cv2.putText(initImg, f"Xinit: {peak}", (peak + 5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 2)
+        cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgInitialBreakPoints.jpg'), initImg)
+        logger.trace(f"Saved image with initial break points to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgInitialBreakPoints.jpg')}")
+
+    logger.trace(f"Finding clusters of break points. eps:{eps}, min_samples:{min_samples}")
+    clusters, labels = group_by_proximity(peaks, eps, min_samples)
+
+    if DEBUG:
+        c = Colors.RED
+        clustImg = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
+        for cluster in clusters:
+            for peak in cluster:
+                if axis == 'y':
+                    clustImg = cv2.line(clustImg, (0, peak), (clustImg.shape[1], peak), color=c, thickness=2)
+                else:
+                    clustImg = cv2.line(clustImg, (peak, 0), (peak, clustImg.shape[0]), color=c, thickness=2)
+            c = Colors.BLUE if c == Colors.RED else Colors.RED
+        cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgBreakPointClusters.jpg'), clustImg)
+        logger.trace(f"Saved image with break points clusters to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgBreakPointClusters.jpg')}")
+
+    peaks = find_breakpoints(clusters, imageHist, method='y_max')
+
+    if DEBUG:
+        clustImgPeaks = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
+        c = Colors.RED
+        for peak in peaks:
+            if axis == 'y':
+                clustImgPeaks = cv2.line(clustImgPeaks, (0, peak), (clustImgPeaks.shape[1], peak), color=c, thickness=2)
+                cv2.putText(clustImgPeaks, f"Yclust: {peak}", (25, peak - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+            else:
+                clustImgPeaks = cv2.line(clustImgPeaks, (peak, 0), (peak, clustImgPeaks.shape[0]), color=c, thickness=2)
+                cv2.putText(clustImgPeaks, f"Xclust: {peak}", (peak + 5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+            c = Colors.BLUE if c == Colors.RED else Colors.RED
+        cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgClusterPeaks.jpg'), clustImgPeaks)
+        logger.trace(f"Saved image with peak break points clusters to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgClusterPeaks.jpg')}")
+
+    gradients = calculate_gradients(baseImage)
+    thresh_image = cv2.bitwise_not(baseImage)
+
+    paths_found = []
+    pathImg = baseImage.copy()
+
+    if axis == 'y':
+        valid_peaks = [peak for peak in peaks if 0 <= peak < height]
+        valid_peaks.append(height - 1)
+    else:
+        valid_peaks = [peak for peak in peaks if 0 <= peak < width]
+        valid_peaks.append(width - 1)
+    logger.trace(f"Found {len(valid_peaks)} valid peaks.")
+
+    for peak in valid_peaks:
+        shortest_path = find_shortest_path_new(thresh_image, gradients, peak, axis=axis, log_cost_factor=200, bias_factor=100, gradient_factor=5)
+        paths_found.append(shortest_path)
+
+    return paths_found
+
+def colTransitionPoints(image, threshold=3):
+    """
+    Find all x-values in an image that mark where black pixels start or stop, with a threshold for minimum spacing.
+
+    Args:
+        image (np.ndarray): The input binary image (black and white).
+        threshold (int): Minimum number of columns without black pixels to consider a transition.
+
+    Returns:
+        List[int]: List of x-values where black pixels start or stop.
+    """
+    height, width = image.shape
+    transitions = []
+    in_black_region = False
+    last_transition = -threshold  # Initialize to a value to allow the first transition
+
+    for x in range(width):
+        column = image[:, x]
+        has_black_pixels = np.any(column == 0)
+
+        if has_black_pixels and not in_black_region:
+            # Transition from white to black
+            in_black_region = True
+            if x - last_transition >= threshold:
+                transitions.append(x)
+                last_transition = x
+        elif not has_black_pixels and in_black_region:
+            # Transition from black to white
+            in_black_region = False
+            if x - last_transition >= threshold:
+                transitions.append(x)
+                last_transition = x
+
+    return transitions

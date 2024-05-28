@@ -3,7 +3,8 @@ import sys
 
 import numpy as np
 from loguru import logger
-import cv2
+
+DEBUG = True
 
 logger.remove()  # Remove the default logger
 logger.add(sys.stderr, level="TRACE")

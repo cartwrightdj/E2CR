@@ -10,7 +10,7 @@ Dependencies:
 '''
 import os
 
-def create_unique_filepath(path):
+def unique_filepath(path):
     """
     Ensure necessary folders are created for the given path. If it's a file path,
     handle the situation where the file already exists by appending a number at the end.
