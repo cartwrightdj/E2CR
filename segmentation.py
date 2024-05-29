@@ -26,91 +26,136 @@ def getLineStats(line):
 
     return min_y, max_y
 
-
-def getImageHist(ImageToHist, axis):
+def findInitialBreakPoints(image: np.ndarray, axis: str, thresholdRate: float, distance: int = None, prominence: float = None) -> tuple[np.ndarray, np.ndarray]:
     """
-    Calculate the histogram or projection of an image across a given axis, excluding a certain number of pixels from the edges.
+    Calculate the histogram or projection of an image across a given axis and find high points (peaks) in the histogram.
 
-    Arguments:
-    ImageToHist -- np.ndarray, the input image
-    axis -- str, the axis along which to calculate the projection ('x' for vertical, 'y' for horizontal)
-    exclude_edges -- int, the number of pixels to exclude from the edges
+    Args:
+        image (np.ndarray): The input image.
+        axis (str): The axis along which to calculate the projection ('x' for vertical, 'y' for horizontal).
+        thresholdRate (float): The threshold value as a percentage of the maximum value to detect peaks.
+        distance (int, optional): Minimum horizontal distance (in samples) between neighboring peaks.
+        prominence (float, optional): Required prominence of peaks.
 
     Returns:
-    projection -- np.ndarray, the projection of the image along the specified axis
+        peaks (np.ndarray): Indices of high points (peaks) above the threshold.
+        projection (np.ndarray): The projection of the image along the specified axis.
     """
-    logger.debug(f"Creating Image Projection")
-    
+    logger.debug(f"Creating Image Projection along {axis} axis")
+
     # Check if the input axis is valid
     if axis not in ['x', 'y']:
         logger.critical(f"Improper axis passed: {axis}")
         raise ValueError(f"Improper axis passed: {axis}")
 
     # Check if the input image is grayscale; if not, convert it to grayscale
-    if len(ImageToHist.shape) == 3:
-        gray_image = cv2.cvtColor(ImageToHist, cv2.COLOR_BGR2GRAY)
-    else:
-        gray_image = ImageToHist
-
-    
+    if len(image.shape) == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Calculate the projection by summing pixel values along the specified axis
     sum_axis = 1 if axis == 'y' else 0
-    projection = np.sum(ImageToHist, axis=sum_axis)
+   # projection = np.sum(image, axis=sum_axis) <---------------------------------------------------------------------
+    cs_image, projection = cumSum(image)
+    if DEBUG:
+        cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'cs_image.jpg'), cs_image)
+        logger.trace(f"Saved image with initial break points to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'cs_image.jpg')}")
+        with open(os.path.join(os.getcwd(), 'debug', 'segmentation', 'cs_image.csv'), 'w') as file:
+            file.write("Row, Cumulative Sum\n")
+            for row_num, value in enumerate(projection):
+                file.write(f"{row_num}, {value}\n")
+
     logger.trace(f"Projection: {projection}")
 
+    logger.debug(f"Locating Maxima of {len(projection)} points above {round(thresholdRate, 2)}% of max value")
+
+    # Ensure thresholdRate is within 0 to 100%
+    if thresholdRate > 100:
+        logger.error(f"Threshold rate {thresholdRate}% is greater than 100%. Setting threshold rate to 100%.")
+        thresholdRate = 100
+    elif thresholdRate < 0:
+        logger.error(f"Threshold rate {thresholdRate}% is less than 0%. Setting threshold rate to 0%.")
+        thresholdRate = 0
+
+    # Ensure distance is non-negative
+    if distance is not None and distance < 0:
+        logger.error(f"Distance {distance} is negative. Setting distance to None.")
+        distance = None
+
+    # Ensure prominence is non-negative
+    if prominence is not None and prominence < 0:
+        logger.error(f"Prominence {prominence} is negative. Setting prominence to None.")
+        prominence = None
+
+    # Calculate the absolute threshold value based on the percentage of the max value
     max_value = np.max(projection)
-    max_index = np.argmax(projection)
-     # Plot the projection with max value annotation
-    if axis == 'z':
-        plt.figure(figsize=(10, 5))
-        plt.plot(projection, label='Projection')
-        plt.scatter([max_index], [max_value], color='red', zorder=5)
-        plt.text(max_index, max_value, f'Max: {max_value}', fontsize=12, verticalalignment='bottom', horizontalalignment='right')
-        plt.title(f'{axis.upper()} Projection ({"Row-wise" if axis == "y" else "Column-wise"} Histogram)')
-        plt.xlabel(f'{"Row" if axis == "y" else "Column"} Index')
-        plt.ylabel('Sum of Pixel Values')
-        plt.legend()
-        # Annotate the maximum x value on the plot
-        plt.annotate(f'Max X: {max_index}', 
-                 xy=(max_index, max_value), 
-                 xytext=(max_index, max_value + max_value * 0.1),
-                 arrowprops=dict(facecolor='black', shrink=0.05),
-                 horizontalalignment='center')
-    
-        plt.show()
-    
+    threshold = max_value * (thresholdRate / 100)
 
-    return projection
+    logger.trace(f"Calculated threshold value: {threshold} (from {thresholdRate}% of max value {max_value})")
 
-def find_high_points(data, threshold, distance=None, prominence=None) -> np.ndarray:
-    logger.debug(f"Locating Maxima of {len(data)} points above {round(threshold, 2)}")
-    logger.trace(f"threshold={threshold}, distance={distance}, prominence={prominence}")
-    """
-    Find high points (peaks) in the data that are above the specified threshold.
+
+    # Manually find peaks
+    logger.trace(f"Finding Break Points in {len(projection)} points)")
+    peaks = []
+    for i in range(1, len(projection) - 1):
+        if projection[i] > threshold and projection[i] > projection[i - 1] and projection[i] > projection[i + 1]:
+            peaks.append(i)
+    logger.trace(f"Found {len(peaks)} candidate Break Points (peaks) in {len(projection)} points)")
+
+
+    # Apply prominence filter if specified
     
-    Args:
-        data (list or np.array): The input data array.
-        threshold (float): The threshold value.
-        distance (int, optional): Minimum horizontal distance (in samples) between neighboring peaks.
-        prominence (float, optional): Required prominence of peaks.
-    
-    Returns:
-        np.ndarray: Indices of high points (peaks) above the threshold.
-    """
-    peaks, properties = find_peaks(data, height=threshold, distance=distance, prominence=prominence)
-    hp_loss = (1 - len(peaks) / len(data)) * 100
+    if prominence:
+        pre_prom = len(peaks)
+        op = prominence 
+        prominence = max(projection) * (prominence/100) # Refactor prominence to be a percent of the max peak
+        logger.info(f"prominence set to:{prominence} ({op}%), max: {max(projection)}, filtering {pre_prom} break points") 
+        valid_peaks = []
+        for peak in peaks:
+            left_base = peak
+            while left_base > 0 and projection[left_base] > projection[left_base - 1]:
+                left_base -= 1
+            right_base = peak
+            while right_base < len(projection) - 1 and projection[right_base] > projection[right_base + 1]:
+                right_base += 1
+            peak_prominence = projection[peak] - max(projection[left_base], projection[right_base])
+            if peak_prominence >= prominence:
+                valid_peaks.append(peak)
+        peaks = valid_peaks
+        pf_loss = len(peaks)/pre_prom * 100
+        Statistics.set_statistic(axis + "_pf_loss", pf_loss)
+        logger.debug(f"prominence filter removed {pre_prom - len(peaks)} of {pre_prom} break points, leaving {len(peaks)}") 
+
+    # Apply distance filter if specified
+    if distance:
+        pre_dist = len(peaks)
+        logger.debug(f"Filtering {len(peaks)} by distance of {distance}")
+        filtered_peaks = []
+        last_peak = -distance  # Initialize to a value to allow the first peak
+        for peak in peaks:
+            if peak - last_peak >= distance:
+                filtered_peaks.append(peak)
+                last_peak = peak
+        peaks = filtered_peaks
+        df_loss = len(peaks)/pre_dist * 100
+        Statistics.set_statistic(axis + "_df_loss", df_loss)
+        logger.debug(f"distance filter removed {pre_dist - len(peaks)} of {pre_dist} break points, leaving {len(peaks)}")
+
+    peaks = np.array(peaks)
+    ibp_loss = (1 - len(peaks) / len(projection)) * 100
+    Statistics.set_statistic(axis + '_ibp_loss' ,  ibp_loss) 
 
     if len(peaks) == 0:
         logger.warning(f"No peaks found above threshold {threshold}. Returning all indices of values above the threshold.")
-        peaks = np.where(data > threshold)[0]  # Return all indices where data is above threshold
-    elif hp_loss > 95:
-        logger.warning(f"Locating peaks resulted in too few break points, loss: {hp_loss}%. Returning all indices of values above the threshold.")
-        peaks = np.where(data > threshold)[0]  # Return all indices where data is above threshold
-    else:    
-        logger.trace(f"Returning {len(peaks)} of {len(data)} points, loss: {hp_loss:.2f}%")
-    
-    return peaks 
+        peaks = np.where(projection > threshold)[0]  # Return all indices where projection is above threshold
+    elif ibp_loss > RuntimeParameters.max_ibp_loss:
+        peaks = np.where(projection > threshold)[0]  # Return all indices where projection is above threshold
+        logger.warning(f"Locating peaks resulted in too few break points, loss: {ibp_loss}%. Returning all {len(peaks)} candidate peaks above the threshold. Try lowering threshold rate")
+    else:
+        logger.trace(f"Returning {len(peaks)} of {len(projection)} points, loss: {ibp_loss:.2f}%")
+
+    Statistics.set_statistic(axis + '_init_peaks', len(peaks))
+
+    return peaks, projection
 
 def group_by_proximity(data, eps, min_samples):
     """
@@ -134,6 +179,7 @@ def group_by_proximity(data, eps, min_samples):
             Smaller min_samples: Reduces the number of points required to form a dense region, which can result in more clusters since even smaller groups can form a cluster.
             Larger min_samples: Increases the number of points required to form a dense region, which can lead to fewer clusters since only larger groups can form a cluster.
     """
+    
     if len(data) < 1: 
         logger.warning(f"Segmentation: Grouping by Proximity of {len(data)} break points; eps={eps}, min_samples={min_samples}")
         return [], np.ndarray(1)
@@ -156,7 +202,7 @@ def group_by_proximity(data, eps, min_samples):
             clusters.append(cluster)
     
     # Calculate and log effective loss
-    chp_loss = round((1 - len(clusters) / len(data)) * 100, 2)
+    Statistics.chp_loss = chp_loss = round((1 - len(clusters) / len(data)) * 100, 2)
     logger.debug(f"Returning {len(clusters)} clusters; eps={eps}, min_samples={min_samples}, effective loss={chp_loss}%.")
     logger.trace(f"Clusters: {clusters}")
     
@@ -471,7 +517,7 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=15
 
     return path
 
-def findPaths(baseImage, threshRate=0.9, eps=20, min_samples=1, axis='y'):
+def findTextSeperation(baseImage, seg_config: dict, axis='y'):
     """
     Find paths in the binary image using thresholding, clustering, and shortest path algorithms.
 
@@ -485,20 +531,18 @@ def findPaths(baseImage, threshRate=0.9, eps=20, min_samples=1, axis='y'):
     Returns:
     paths_found -- list of lists of tuples, the found paths
     """
+    RuntimeParameters.update_parameters(seg_config)
+    RuntimeParameters.display
+
     height, width = baseImage.shape[:2]
     logger.debug(f"Base image dimensions: height={height}, width={width}")
 
-    # Project Image
-    imageHist = getImageHist(baseImage, axis=axis)
-    logger.debug(f"Image histogram calculated along axis={axis}")
-
-    # Remove values below a threshold %
-    breakPointThresh = max(imageHist) * threshRate
-    logger.debug(f"Break point threshold set to: {breakPointThresh}")
-
-    peaks = find_high_points(imageHist, breakPointThresh)
-    logger.debug(f"Found peaks: {peaks}")
-
+    
+    peaks, projection = findInitialBreakPoints(baseImage, axis, 
+                                               RuntimeParameters.threshRate, 
+                                               distance=RuntimeParameters.distance,
+                                               prominence=RuntimeParameters.prominence)
+    
     # Debugging: create image with initial break points
     if DEBUG:
         initImg = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
@@ -512,8 +556,8 @@ def findPaths(baseImage, threshRate=0.9, eps=20, min_samples=1, axis='y'):
         cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgInitialBreakPoints.jpg'), initImg)
         logger.trace(f"Saved image with initial break points to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgInitialBreakPoints.jpg')}")
 
-    logger.trace(f"Finding clusters of break points. eps:{eps}, min_samples:{min_samples}")
-    clusters, labels = group_by_proximity(peaks, eps, min_samples)
+    logger.trace(f"Finding clusters of break points. eps:{RuntimeParameters.eps}, min_samples:{RuntimeParameters.min_samples}")
+    clusters, labels = group_by_proximity(peaks, RuntimeParameters.eps, RuntimeParameters.min_samples)
 
     if DEBUG:
         c = Colors.RED
@@ -528,7 +572,7 @@ def findPaths(baseImage, threshRate=0.9, eps=20, min_samples=1, axis='y'):
         cv2.imwrite(os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgBreakPointClusters.jpg'), clustImg)
         logger.trace(f"Saved image with break points clusters to: {os.path.join(os.getcwd(), 'debug', 'segmentation', 'dbgBreakPointClusters.jpg')}")
 
-    peaks = find_breakpoints(clusters, imageHist, method='y_max')
+    peaks = find_breakpoints(clusters, projection, method='y_max')
 
     if DEBUG:
         clustImgPeaks = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
@@ -598,3 +642,58 @@ def colTransitionPoints(image, threshold=3):
                 last_transition = x
 
     return transitions
+
+def cumSum(image):
+    """
+    Create a color image where each pixel represents the cumulative sum of all previous pixels in the source image,
+    distributed evenly across the three color channels. Also, create a matrix with the row number and the final sum for each row.
+    
+    Args:
+        image (np.ndarray): The input image (grayscale or color).
+        
+    Returns:
+        np.ndarray: The output color image with cumulative sums distributed across channels.
+        np.ndarray: The matrix with row numbers and final cumulative sums.
+    """
+    # Convert to grayscale if the image is not already
+    if len(image.shape) == 3:
+        grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    elif len(image.shape) == 2:
+        grayscale_image = image
+    else:
+        raise ValueError("Input image must be either a grayscale or a color image")
+    
+    # Invert the grayscale image
+    #grayscale_image = cv2.bitwise_not(grayscale_image)
+    
+    # Compute the maximum sum a row could have
+    height, width = grayscale_image.shape
+    max_sum = width * 255
+    
+    # Thresholds for each channel
+    threshold1 = max_sum / 3
+    threshold2 = 2 * threshold1
+    
+    # Initialize the cumulative sum and color image
+    color_image = np.zeros((*grayscale_image.shape, 3), dtype=np.uint8)
+    cumulative_sums = []
+
+    for row in range(height):
+        cumulative_sum = 0
+        for col in range(width):
+            pixel_value = grayscale_image[row, col]
+            cumulative_sum += pixel_value
+            if cumulative_sum <= threshold1:
+                color_image[row, col, 0] = int((cumulative_sum / threshold1) * 255)
+            elif cumulative_sum <= threshold2:
+                color_image[row, col, 0] = 255
+                color_image[row, col, 1] = int(((cumulative_sum - threshold1) / threshold1) * 255)
+            else:
+                color_image[row, col, 0] = 255
+                color_image[row, col, 1] = 255
+                color_image[row, col, 2] = int(((cumulative_sum - threshold2) / threshold1) * 255)
+        cumulative_sums.append(cumulative_sum)
+    
+    cumulative_sums_matrix = np.array(cumulative_sums, dtype=np.int64)
+    
+    return color_image, cumulative_sums_matrix

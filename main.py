@@ -2,8 +2,8 @@ import cv2
 #import os
 #import matplotlib.pyplot as plt
 from common import *
-from imageman import preProcessImage, crop_between_lines2, draw_path_on_image, cropTextRows
-from segmentation import findPaths, colTransitionPoints
+from imageman import preProcessImage, cropRowsFromImage, draw_path_on_image, cropTextFromRow, percentWhite, crop_image_to_content
+from segmentation import findTextSeperation, colTransitionPoints
 from loguru import logger
 
 
@@ -23,45 +23,49 @@ def save_crops(images):
         cv2.imwrite(crop_path, image)
 
 # Paths
-image_path = 'E:/E2CR/sample_images_for_ocr/R. 317 (7).jpg'
+image_path = 'E:/E2CR/sample_images_for_ocr/R. 317 (9).jpg'
+Statistics.test = 2
 
 logger.info(f"Loading image from {image_path}")
 
-imageToSegment = cv2.imread(image_path)
+def getTextFromImage(image_path: str):
+    imageToSegment = cv2.imread(image_path)
 
-# Preprocessing
-ppImage = preProcessImage(imageToSegment.copy())
-cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'ppImage.jpg'), ppImage)
+    # Preprocessing
+    ppImage = preProcessImage(imageToSegment.copy(),pp_config)
+    cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'ppImage.jpg'), ppImage)
 
-paths_found = findPaths(ppImage,threshRate=.85,eps=10)
-pathsOnImage = imageToSegment.copy()
-for path in paths_found:
-    pathsOnImage = draw_path_on_image(pathsOnImage,path)
-cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'pathsOnImage.jpg'), pathsOnImage)
+    paths_found = findTextSeperation(ppImage,seg_config)
+    pathsOnImage = imageToSegment.copy()
+    for path in paths_found:
+        pathsOnImage = draw_path_on_image(pathsOnImage,path)
+    cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'pathsOnImage.jpg'), pathsOnImage)
 
-if imageToSegment is not None:
-    cropped_images = crop_between_lines2(ppImage, paths_found)
-    
-    for num, text_line in enumerate(cropped_images):
+    if imageToSegment is not None:
+        RowsOfText = cropRowsFromImage(ppImage, paths_found)
         
-        word_breaks = colTransitionPoints(text_line)
-        '''
-        h, w = text_line.shape
-        text_line = cv2.cvtColor(text_line, cv2.COLOR_GRAY2BGR)
-        for x in transfound_found:
+        for num, RowOfText in enumerate(RowsOfText):
+            
+            word_breaks = colTransitionPoints(RowOfText)
+            for x in word_breaks:
+                height, width = RowOfText.shape
+                # Draw a vertical line from (x_value, 0) to (x_value, height)
+                RowOfText = cv2.line(RowOfText, (x, 0), (x, height), (0, 255, 0), 2)
+                cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_splits.jpg'), RowOfText )
 
-            text_line = cv2.line(text_line, (x, 0), (x, h), Colors.BLUE, thickness=2)
-            cv2.putText(text_line, f"Xt: {x}", (x+2, h - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
-        
-        '''
-        words = cropTextRows(text_line,word_breaks)
-        for w, word in enumerate(words):
-            print("Should be saving here")
-            print(cv2.imwrite(os.path.join(os.getcwd(), 'output', f'text_line_{num}_word{w}.jpg'), word ))
+            words = cropTextFromRow(RowOfText,word_breaks)
+            for w, word in enumerate(words):
+                crop = crop_image_to_content(word)
+                height, width = crop.shape
+                if not (((percentWhite(word) > 90) or (width < 26) or (height < 10))): 
+                    cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_word_{w:03d}.jpg'), crop )
 
-    #save_crops(cropped_images)
-else:
-    logger.error("Failed to load the image")
+    else:
+        logger.error("Failed to load the image")
 
 
+getTextFromImage(image_path)
+
+RuntimeParameters.display()      
+Statistics.display()
 
