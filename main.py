@@ -1,45 +1,31 @@
 import cv2
-#import os
+import os
 #import matplotlib.pyplot as plt
-from common import *
-from imageman import preProcessImage, cropRowsFromImage, draw_path_on_image, cropTextFromRow, percentWhite, crop_image_to_content
+from common import DefaultParameters, Statistics, DEBUG_FOLDER
+from imageman import preProcessImage, cropRowsFromImage, draw_path_on_image, cropTextFromRow, percentWhite, crop_image_to_content, process_images_in_folder
 from segmentation import findTextSeperation, colTransitionPoints
 from loguru import logger
 
 
-def save_crops(images):
-    """
-    Display the list of images in a grid.
-
-    Args:
-        images (list of np.array): List of images to display.
-    """
-    num_images = len(images)
-    cols = 3
-    rows = (num_images + cols - 1) // cols
-
-    for i, image in enumerate(images):
-        crop_path = os.path.join(os.getcwd(), "output", f"_crop_{i}.png")
-        cv2.imwrite(crop_path, image)
-
 # Paths
-image_path = 'E:/E2CR/sample_images_for_ocr/R. 317 (9).jpg'
-Statistics.test = 2
-
-logger.info(f"Loading image from {image_path}")
+image_path = 'E:/E2CR/sample_images_for_ocr/R. 317 (2).jpg'
+imageToSegment = cv2.imread(image_path)
 
 def getTextFromImage(image_path: str):
+    Parameters = DefaultParameters()
+    logger.info(f"Loading image from {image_path}")
     imageToSegment = cv2.imread(image_path)
 
     # Preprocessing
-    ppImage = preProcessImage(imageToSegment.copy(),pp_config)
-    cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'ppImage.jpg'), ppImage)
-
-    paths_found = findTextSeperation(ppImage,seg_config)
+    ppImage = preProcessImage(imageToSegment.copy(),Parameters)
+    cv2.imwrite(os.path.join(DEBUG_FOLDER, '0_PreProcessedImage.jpg'), ppImage)
+    
+    paths_found = findTextSeperation(ppImage)
+    
     pathsOnImage = imageToSegment.copy()
     for path in paths_found:
         pathsOnImage = draw_path_on_image(pathsOnImage,path)
-    cv2.imwrite(os.path.join(os.getcwd(), 'debug','segmentation', 'pathsOnImage.jpg'), pathsOnImage)
+    cv2.imwrite(os.path.join(DEBUG_FOLDER, 'pathsOnImage.jpg'), pathsOnImage)
 
     if imageToSegment is not None:
         RowsOfText = cropRowsFromImage(ppImage, paths_found)
@@ -47,11 +33,12 @@ def getTextFromImage(image_path: str):
         for num, RowOfText in enumerate(RowsOfText):
             
             word_breaks = colTransitionPoints(RowOfText)
+            line_split_file = RowOfText.copy()
             for x in word_breaks:
-                height, width = RowOfText.shape
+                height, width = line_split_file.shape
                 # Draw a vertical line from (x_value, 0) to (x_value, height)
-                RowOfText = cv2.line(RowOfText, (x, 0), (x, height), (0, 255, 0), 2)
-                cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_splits.jpg'), RowOfText )
+                line_split_file = cv2.line(line_split_file, (x, 0), (x, height), (0, 255, 0), 2)
+                cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_splits.jpg'), line_split_file )
 
             words = cropTextFromRow(RowOfText,word_breaks)
             for w, word in enumerate(words):
@@ -66,6 +53,6 @@ def getTextFromImage(image_path: str):
 
 getTextFromImage(image_path)
 
-RuntimeParameters.display()      
+DefaultParameters.print_defaults    
 Statistics.display()
 

@@ -8,7 +8,7 @@ Public Class Form1
     Private labels As Dictionary(Of String, String)
     Private ReadOnly random As New Random()
     Private isErasing As Boolean = False
-    Private eraserSize As Integer = 5
+    Private eraserSize As Integer = 2
     Private originalImage As Bitmap
     Private maskImage As Bitmap
     Private eraserCursor As Cursor
@@ -41,7 +41,6 @@ Public Class Form1
             selectedFolderPath = FolderBrowserDialog1.SelectedPath
             images = Directory.GetFiles(selectedFolderPath, "*.*").
                 Where(Function(f) Not Path.GetFileName(f).ToLower().Contains("splits") AndAlso
-                                  Not System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(f), "^line\d{3}$") AndAlso
                                   Not System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(f), "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$") AndAlso
                                   (f.EndsWith(".jpg") OrElse f.EndsWith(".png") OrElse f.EndsWith(".bmp"))).ToList()
             LoadLabels()
@@ -226,6 +225,14 @@ Public Class Form1
                 Dim newFilePath = Path.Combine(selectedFolderPath, newFileName)
                 File.Move(currentImagePath, newFilePath)
 
+                ' Move a copy of the original file to the "processed" folder
+                Dim processedFolderPath = Path.Combine(selectedFolderPath, "processed")
+                If Not Directory.Exists(processedFolderPath) Then
+                    Directory.CreateDirectory(processedFolderPath)
+                End If
+                Dim processedFilePath = Path.Combine(processedFolderPath, Path.GetFileName(currentImagePath))
+                File.Copy(newFilePath, processedFilePath, overwrite:=True)
+
                 ' Update the images list and dictionary
                 images(currentIndex) = newFilePath
                 If labels.ContainsKey(currentImageName) Then
@@ -251,9 +258,28 @@ Public Class Form1
 
         ' Save the mask image
         If maskImage IsNot Nothing Then
-            Using tempMaskImage As New Bitmap(PictureBox1.Image)
-                tempMaskImage.Save(maskFilePath, ImageFormat.Png)
+            ' Convert the image displayed in PictureBox1 to a bitmap
+            Dim displayedImage As Bitmap = ConvertToNonIndexedBitmap(CType(PictureBox1.Image, Bitmap))
+
+            ' Resize the displayed image back to the original dimensions
+            Dim fullSizeMask As New Bitmap(originalImage.Width, originalImage.Height)
+            Using g As Graphics = Graphics.FromImage(fullSizeMask)
+                g.DrawImage(displayedImage, 0, 0, originalImage.Width, originalImage.Height)
             End Using
+
+            ' Convert the resized image to binary
+            For y As Integer = 0 To fullSizeMask.Height - 1
+                For x As Integer = 0 To fullSizeMask.Width - 1
+                    Dim pixelColor As Color = fullSizeMask.GetPixel(x, y)
+                    If pixelColor.R < 128 AndAlso pixelColor.G < 128 AndAlso pixelColor.B < 128 Then
+                        fullSizeMask.SetPixel(x, y, Color.Black)
+                    Else
+                        fullSizeMask.SetPixel(x, y, Color.White)
+                    End If
+                Next
+            Next
+
+            fullSizeMask.Save(maskFilePath, ImageFormat.Png)
         End If
 
         ' Save label and mask file info to CSV

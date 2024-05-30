@@ -5,6 +5,8 @@ from scipy.stats import kurtosis, skew, mode
 from skimage.measure import shannon_entropy
 from loguru import logger
 from segmentation import getLineStats
+from PIL import Image
+from PIL.ExifTags import TAGS
 
 def calculate_average_pixel_value(image):
     """
@@ -83,7 +85,7 @@ def remove_border(image):
     else:
         return gray_image
     
-def remove_small_black_areas(image, area_threshold=100):
+def removeSpackle(image, area_threshold=DefaultParameters.max_area_size):
     """
     Remove small black areas surrounded by white in an image.
 
@@ -149,7 +151,7 @@ def draw_line(image, position, orientation='vertical', color=(0, 255, 0), thickn
     
     return image_with_line
 
-def draw_path_on_image(image, path, axis='y'):
+def draw_path_on_image(image, path, axis='y',thickness=2):
     """
     Draw the shortest path on the image.
 
@@ -170,18 +172,20 @@ def draw_path_on_image(image, path, axis='y'):
     
     logger.debug(f"Path length: {len(path)}")
     
+    #for (cy, cx) in path:
+    #    output_image[cy, cx] = [255, 0, 0]
     for (cy, cx) in path:
-        output_image[cy, cx] = [255, 0, 0]
+        cv2.circle(output_image, (cx, cy), thickness, (255, 0, 0), -1)
 
     # Calculate max and min coordinates from the path
     if axis == 'y':
         max_coord = max(path, key=lambda x: x[0])[0]
         min_coord = min(path, key=lambda x: x[0])[0]
-        logger.debug(f"Max Y: {max_coord}, Min Y: {min_coord}")
+        logger.trace(f"Max Y: {max_coord}, Min Y: {min_coord}")
     else:
         max_coord = max(path, key=lambda x: x[1])[1]
         min_coord = min(path, key=lambda x: x[1])[1]
-        logger.debug(f"Max X: {max_coord}, Min X: {min_coord}")
+        logger.trace(f"Max X: {max_coord}, Min X: {min_coord}")
 
     # Annotate max and min coordinates
     height, width = output_image.shape[:2]
@@ -377,7 +381,22 @@ def cropTextFromRow(image: np.ndarray, transitions: list[int]) -> list[np.ndarra
     
     return cropped_images
 
-def preProcessImage(ppImage, pp_config: dict, imageDesc: str = "") -> np.ndarray:
+ 
+def preProcessImage(ppImage, removeBorder: bool = DefaultParameters.removeBorder,
+                    applyDenoise: bool = DefaultParameters.applyDenoise,
+                    applyErode: bool = DefaultParameters.applyErode,
+                    erodeKernel: bool = DefaultParameters.erodeKernel,
+                    useAdaptiveThreshold: bool = DefaultParameters.useAdaptiveThreshold,
+                    adaptiveBlockSize: int = DefaultParameters.adaptiveBlockSize,
+                    adaptiveC: int = DefaultParameters.adaptiveC,
+                    simple_threshold = DefaultParameters.simple_threshold,
+                    simple_max_val = DefaultParameters.simple_max_value,
+                    max_area_size = DefaultParameters.max_area_size,
+                    rs_threshold_value = DefaultParameters.rs_threshold_value,
+                    rs_max_value = DefaultParameters.rs_max_value,
+                    applyDilation: bool = DefaultParameters.applyDilation,
+                    dilateKernalSize = DefaultParameters.applyDilation,
+                    applyMorphology: bool = DefaultParameters.applyMorphology) -> np.ndarray:
     """
     Preprocess an image with optional denoising, adaptive thresholding, erosion, dilation, and morphology.
 
@@ -390,14 +409,9 @@ def preProcessImage(ppImage, pp_config: dict, imageDesc: str = "") -> np.ndarray
     ppImage -- np.ndarray, the preprocessed image
     """
     try:
-        logger.info("Starting image preprocessing")
-        logger.debug(f"Configuration: {pp_config}")
-        logger.trace(f"preProcessImage(ppImage={ppImage.shape}, pp_config={pp_config}, imageDesc={imageDesc})")
+        logger.trace(f"preProcessImage Image)")
 
         step = 0
-
-        # Update runtime parameters based on pp_config
-        RuntimeParameters.update_parameters(pp_config)
 
         # Check and convert to grayscale if necessary
         if not is_grayscale(ppImage):
@@ -409,37 +423,43 @@ def preProcessImage(ppImage, pp_config: dict, imageDesc: str = "") -> np.ndarray
         ppImage = ppImage.astype(np.uint8)
 
         # Detect and Remove Border
-        step += 1
-        ppImage = remove_border(ppImage)
-        save_debug_image(ppImage, step, "Border_Removed", imageDesc)
+        if removeBorder:
+            step += 1
+            ppImage = remove_border(ppImage)
+            if DEBUG: save_debug_image(ppImage, "pp_Border_Removed")
         
         # Apply denoising
-        if RuntimeParameters.applyDenoise:
-            ppImage = apply_denoising(ppImage, step, imageDesc)
+        if applyDenoise:
+            ppImage = apply_denoising(ppImage)
+            if DEBUG: save_debug_image(ppImage, "pp_Border_Removed")
 
         # Apply erosion
-        if RuntimeParameters.applyErode:
-            ppImage = apply_erosion(ppImage, RuntimeParameters.erodeKernel, step, imageDesc)
+        if applyErode:
+            step += 1
+            ppImage = apply_erosion(ppImage, erodeKernel)
 
         # Apply adaptive thresholding or simple thresholding
-        if RuntimeParameters.useAdaptiveThreshold:
-            ppImage = apply_adaptive_threshold(ppImage, step, imageDesc)
+        if useAdaptiveThreshold:
+            step += 1
+            ppImage = apply_adaptive_threshold(ppImage, adaptiveBlockSize,adaptiveC)
         else:
-            ppImage = apply_simple_threshold(ppImage, RuntimeParameters.threshold, RuntimeParameters.maxValue, step, imageDesc)
+            step += 1
+            ppImage = apply_simple_threshold(ppImage, simple_threshold, simple_max_val.maxValue)
 
         # Remove small black areas
-        if RuntimeParameters.minBlackAreaSize:
-            ppImage = remove_small_black_areas(ppImage, RuntimeParameters.minBlackAreaSize)
+        if max_area_size:
+            ppImage = removeSpackle(ppImage, max_area_size, rs_threshold_value,rs_threshold_value )
             step += 1
-            save_debug_image(ppImage, step, "SpotRemoval", imageDesc)
+            save_debug_image(ppImage, step, "SpotRemoval")
 
         # Apply dilation
-        if RuntimeParameters.applyDilation:
-            ppImage = apply_dilation(ppImage, RuntimeParameters.dilateKernalSize, step, imageDesc)
+        if applyDilation:
+            ppImage = apply_dilation(ppImage, dilateKernalSize)
 
         # Apply morphological operations
-        if RuntimeParameters.applyMorphology:
-            ppImage = apply_morphology(ppImage, step, imageDesc)
+        if applyMorphology:
+            step += 1
+            ppImage = apply_morphology(ppImage)
         
         logger.info("Finished image preprocessing")
         return ppImage
@@ -451,94 +471,114 @@ def is_grayscale(image):
     logger.trace(f"is_grayscale(image.shape={image.shape})")
     return len(image.shape) == 2
 
-def apply_denoising(image, step, imageDesc):
+def apply_denoising(image,h = DefaultParameters.h,tWindowSize= DefaultParameters.tWindowSize,sWindowSize=DefaultParameters.sWindowSize ):
     logger.info("Applying Denoising to Image")
-    logger.trace(f"apply_denoising(image.shape={image.shape}, step={step}, imageDesc={imageDesc})")
-    logger.debug(f"h={RuntimeParameters.h}, Template Window Size: {RuntimeParameters.tWindowSize}, Search Window Size: {RuntimeParameters.sWindowSize}")
-    image = cv2.fastNlMeansDenoising(image, None, RuntimeParameters.h, RuntimeParameters.tWindowSize, RuntimeParameters.sWindowSize)
-    save_debug_image(image, step, "Denoised_Image", imageDesc)
+    logger.trace(f"PreProcessing - Apply Denoising(image.shape={image.shape}")
+    logger.debug(f"h={h}, Template Window Size: {tWindowSize}, Search Window Size: {sWindowSize}")
+    image = cv2.fastNlMeansDenoising(image, None, h, tWindowSize, sWindowSize)
+    if DEBUG:save_debug_image(image,"pp_Denoised_Image")
     return image
 
 def apply_erosion(image, kernel, step, imageDesc):
     logger.info("Applying Erosion")
     logger.trace(f"apply_erosion(image.shape={image.shape}, kernel={kernel.shape}, step={step}, imageDesc={imageDesc})")
     image = cv2.erode(image, kernel)
-    save_debug_image(image, step, "Eroded_Image", imageDesc)
     return image
 
-def apply_adaptive_threshold(image, step, imageDesc):
+def apply_adaptive_threshold(image, adaptiveBlockSize = DefaultParameters.adaptiveBlockSize, adaptiveC = DefaultParameters.adaptiveC):
     logger.info("Using Adaptive Thresholding")
-    logger.trace(f"apply_adaptive_threshold(image.shape={image.shape}, step={step}, imageDesc={imageDesc})")
-    image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, RuntimeParameters.adaptiveBlockSize, RuntimeParameters.adaptiveC)
-    save_debug_image(image, step, "AdaptiveThreshold", imageDesc)
+    logger.trace(f"apply_adaptive_threshold(image.shape={image.shape}, adaptiveBlockSize: {adaptiveBlockSize},  adaptiveC: {adaptiveC})")
+    image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, adaptiveBlockSize, adaptiveC)
     return image
 
-def apply_simple_threshold(image, threshold, max_value, step, imageDesc):
+def apply_simple_threshold(image, simple_threshold = DefaultParameters.simple_threshold, simple_max_value = DefaultParameters.simple_max_value):
     logger.info("Using Simple Thresholding")
-    logger.trace(f"apply_simple_threshold(image.shape={image.shape}, threshold={threshold}, max_value={max_value}, step={step}, imageDesc={imageDesc})")
-    _, image = cv2.threshold(image, threshold, max_value, cv2.THRESH_BINARY)
-    save_debug_image(image, step, "SimpleThreshold", imageDesc)
+    logger.trace(f"apply_simple_threshold(image.shape={image.shape}, simple_threshold={simple_threshold}, max_value={simple_max_value})")
+    _, image = cv2.threshold(image, simple_threshold, simple_max_value, cv2.THRESH_BINARY)
     return image
 
-def apply_dilation(image, kernel_size, step, imageDesc):
+def apply_dilation(image, kernel_size):
     logger.info("Applying Dilation")
-    logger.trace(f"apply_dilation(image.shape={image.shape}, kernel_size={kernel_size}, step={step}, imageDesc={imageDesc})")
+    logger.trace(f"apply_dilation(image.shape={image.shape}, kernel_size={kernel_size})")
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size)
     image = cv2.dilate(image, kernel, iterations=1)
-    save_debug_image(image, step, "Dilated_Image", imageDesc)
     return image
 
-def apply_morphology(image, step, imageDesc):
+def apply_morphology(image, morphKernelSize = DefaultParameters.morphKernelSize ):
     logger.info("Applying Morphological Operations")
-    logger.trace(f"apply_morphology(image.shape={image.shape}, step={step}, imageDesc={imageDesc})")
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, RuntimeParameters.morphKernelSize)
+    logger.trace(f"apply_morphology(image.shape={image.shape}, morphKernelSize: {morphKernelSize}")
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, morphKernelSize)
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-    save_debug_image(image, step, "Morphology", imageDesc)
     return image
 
-def remove_small_black_areas(image, area_threshold=100):
+def removeSpackle(image, max_area_size=DefaultParameters.max_area_size, 
+                  threshold_value=DefaultParameters.rs_threshold_value, 
+                  max_value=DefaultParameters.rs_max_value, 
+                  connectivity=DefaultParameters.connectivity):
     """
     Remove small black areas surrounded by white in an image.
 
     Args:
         image (np.array): The input image.
         area_threshold (int): Threshold area to determine which black areas to remove.
+                              Any connected component (black area) with an area smaller
+                              than this threshold will be removed.
+        threshold_value (int): The threshold value used to binarize the image.
+                              Pixels with a value greater than or equal to this value 
+                              are set to 0 (black) and the rest to max_value (white) 
+                              when using cv2.THRESH_BINARY_INV.
+        max_value (int): The maximum value to use with the THRESH_BINARY_INV thresholding.
+        connectivity (int): Connectivity to use when finding connected components. 
+                            4 for 4-way connectivity, 8 for 8-way connectivity.
 
     Returns:
         np.array: The processed image with small black areas removed.
     """
-    logger.trace(f"remove_small_black_areas(image.shape={image.shape}, area_threshold={area_threshold})")
-    
+    logger.trace(f"Starting removeSpackle(image.shape={image.shape}, area_threshold={max_area_size}, threshold_value={threshold_value}, max_value={max_value}, connectivity={connectivity})")
+
+    # Ensure the input is a numpy array
     if not isinstance(image, np.ndarray):
         raise TypeError("Input must be a numpy.ndarray")
 
     # Convert to grayscale if the input is a color image
     if len(image.shape) == 3:
+        logger.debug("Converting color image to grayscale.")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
-    # Apply thresholding to create a binary image
-    _, binary = cv2.threshold(image, RuntimeParameters.rsb_threshold, RuntimeParameters.rsb_maxValue, cv2.THRESH_BINARY_INV)
-    
+    # Apply thresholding to create a binary image (invert the binary image to get black areas as white)
+    logger.debug("Applying binary thresholding.")
+    _, binary = cv2.threshold(image, threshold_value, max_value, cv2.THRESH_BINARY_INV)
+
     # Find connected components
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
-    
+    logger.debug("Finding connected components.")
+    # connectedComponentsWithStats finds all connected components in a binary image.
+    # It returns the number of labels, the label matrix, the stats matrix, and the centroids matrix.
+    # - num_labels: Number of labels (including background).
+    # - labels: Label matrix where each connected component is assigned a unique label.
+    # - stats: Statistics for each label, including bounding box and area (cv2.CC_STAT_*).
+    # - centroids: Centroids of each connected component.
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=connectivity)
+
     # Create an output image initialized to white
     output_image = np.ones_like(image) * 255
-    
+
     # Loop through the components
+    logger.debug(f"Processing {num_labels - 1} connected components.")
+    rem_count = 0
     for i in range(1, num_labels):  # Skip the background label 0
         area = stats[i, cv2.CC_STAT_AREA]
-        if area >= area_threshold:
+        if area >= max_area_size:
             # Keep the component if its area is larger than the threshold
             output_image[labels == i] = 0
-    
+        else:
+            rem_count += 1
+
+    logger.trace(f"Completed removeSpackle. removed {rem_count}")
     return output_image
 
-def save_debug_image(image, step, step_description, imageDesc):
-    logger.trace(f"save_debug_image(image.shape={image.shape}, step={step}, step_description={step_description}, imageDesc={imageDesc})")
-    debug_path = os.path.join(os.getcwd(), "debug", "PreProcess", f"Step_{step}_{step_description}_{imageDesc}.png")
+def save_debug_image(image, step=0, Description='DEBUG'):
+    debug_path = os.path.join(DEBUG_FOLDER, f"Step_{step}_{Description}.png")
     cv2.imwrite(debug_path, image)
-    logger.debug(f"Saved {step_description} image to {debug_path}")
 
 def percentWhite(image: np.ndarray) -> float:
     """
@@ -591,3 +631,64 @@ def crop_image_to_content(image, buffer=2):
     cropped_image = image[y_start:y_end, x_start:x_end]
 
     return cropped_image
+
+def print_image_info(image_path):
+    # Load the image using OpenCV
+    image = cv2.imread(image_path)
+    
+    if image is None:
+        print(f"Image not found or the path is incorrect: {image_path}")
+        return
+
+    # General image information
+    print(f"\nImage Path: {image_path}")
+    print(f"Image Shape: {image.shape}")
+    print(f"Image Data Type: {image.dtype}")
+
+    # Check the number of channels
+    channels = image.shape[2] if len(image.shape) == 3 else 1
+    print(f"Number of Channels: {channels}")
+
+    # Convert the image to PIL format to extract metadata
+    pil_image = Image.open(image_path)
+
+    # Print image format
+    print(f"Image Format: {pil_image.format}")
+
+    # Extract and print EXIF metadata if available
+    exif_data = pil_image._getexif()
+    if exif_data is not None:
+        print("EXIF Metadata:")
+        for tag_id, value in exif_data.items():
+            tag_name = TAGS.get(tag_id, tag_id)
+            print(f"  {tag_name}: {value}")
+    else:
+        print("No EXIF metadata found.")
+
+    # Print statistical information for each channel
+    if channels > 1:
+        channel_names = ['Blue', 'Green', 'Red']
+        for i in range(channels):
+            channel_data = image[:, :, i]
+            print(f"\nChannel: {channel_names[i]}")
+            print(f"  Min Value: {np.min(channel_data)}")
+            print(f"  Max Value: {np.max(channel_data)}")
+            print(f"  Mean Value: {np.mean(channel_data)}")
+            print(f"  Standard Deviation: {np.std(channel_data)}")
+    else:
+        print("Image is grayscale.")
+        print(f"  Min Value: {np.min(image)}")
+        print(f"  Max Value: {np.max(image)}")
+        print(f"  Mean Value: {np.mean(image)}")
+        print(f"  Standard Deviation: {np.std(image)}")
+
+def process_images_in_folder(folder_path):
+    # Supported image extensions
+    supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
+
+    # Iterate through all files in the folder
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if any(file.lower().endswith(ext) for ext in supported_extensions):
+                image_path = os.path.join(root, file)
+                print_image_info(image_path)
