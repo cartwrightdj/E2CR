@@ -1,1 +1,120 @@
-###E2CR Early English Cursive Recognition
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def detect_lines(image_path, 
+                 canny_threshold1=50, canny_threshold2=150, 
+                 gaussian_blur_ksize=(5, 5), gaussian_blur_sigma=1.5, 
+                 hough_rho=1, hough_theta=np.pi / 180, hough_threshold=200, 
+                 hough_min_line_length=50, hough_max_line_gap=10,
+                 apply_morphology=False, morph_kernel_size=(5, 5), morph_iterations=1,
+                 angle_threshold=np.pi / 36):
+    """
+    Detects generally vertical and horizontal lines in an image using Canny edge detection and Hough Line Transform.
+
+    Parameters:
+    - image_path (str): Path to the input image.
+    - canny_threshold1 (int): First threshold for the hysteresis procedure in Canny.
+        This is the lower threshold for edge detection. Edges with intensity gradient 
+        higher than this value are considered as strong edges and are definitely part 
+        of edges. Lowering this value will result in detecting more edges, including 
+        weaker and possibly noisy edges. Increasing this value will result in detecting 
+        fewer edges, focusing on stronger edges only.
+    - canny_threshold2 (int): Second threshold for the hysteresis procedure in Canny.
+        This is the upper threshold for edge detection. Edges with intensity gradient 
+        higher than this value are considered as strong edges and are definitely part 
+        of edges. Edges with intensity gradient between the two thresholds are considered 
+        if they are connected to strong edges. Lowering this value will result in detecting 
+        more edges, including weaker and possibly noisy edges. Increasing this value will 
+        result in detecting fewer edges, focusing on stronger edges only.
+    - gaussian_blur_ksize (tuple): Kernel size for Gaussian blur.
+        Larger sizes result in more blurring, which can reduce noise but may also blur important edge details.
+    - gaussian_blur_sigma (float): Standard deviation for Gaussian blur.
+        Higher values result in more blurring.
+    - hough_rho (float): Distance resolution of the accumulator in pixels.
+        Smaller values result in more precise line detection, but the process may be computationally more expensive.
+    - hough_theta (float): Angle resolution of the accumulator in radians.
+        Smaller values result in more precise line detection, but this can increase computation time.
+    - hough_threshold (int): Accumulator threshold parameter for Hough Line Transform.
+        Only lines that get enough votes are returned. Higher values mean that only the most prominent lines are detected, while lower values will detect more lines, including weaker ones.
+    - hough_min_line_length (int): Minimum length of a line to be detected by the Probabilistic Hough Line Transform.
+        Higher values will ignore shorter lines.
+    - hough_max_line_gap (int): Maximum allowed gap between points on the same line to link them by the Probabilistic Hough Line Transform.
+        Higher values will merge lines that are farther apart.
+    - apply_morphology (bool): If True, apply morphological transformations to the edge map.
+    - morph_kernel_size (tuple): Kernel size for morphological operations.
+    - morph_iterations (int): Number of iterations for morphological operations.
+    - angle_threshold (float): Threshold to filter lines based on angle. Lines with angles 
+        close to 0, π/2, π, and 3π/2 will be considered as vertical and horizontal lines.
+
+    Returns:
+    - output_img (ndarray): Image with detected lines drawn.
+    """
+    
+    # Load the image
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError("Image not found or path is incorrect")
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  
+    
+    # Apply Gaussian blur
+    blurred = cv2.GaussianBlur(gray, gaussian_blur_ksize, gaussian_blur_sigma)
+    
+    # Detect edges using Canny
+    edges = cv2.Canny(blurred, canny_threshold1, canny_threshold2)
+    
+    # Apply morphological transformations if required
+    if apply_morphology:
+        kernel = np.ones(morph_kernel_size, np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=morph_iterations)
+        edges = cv2.erode(edges, kernel, iterations=morph_iterations)
+    
+    # Apply Hough Line Transform
+    lines = cv2.HoughLines(edges, hough_rho, hough_theta, hough_threshold)
+    
+    # Draw the vertical and horizontal lines detected by Hough Line Transform
+    if lines is not None:
+        for line in lines:
+            rho, theta = line[0]
+            # Filter based on angle
+            if (abs(theta) < angle_threshold or
+                abs(theta - np.pi/2) < angle_threshold or
+                abs(theta - np.pi) < angle_threshold or
+                abs(theta - 3*np.pi/2) < angle_threshold):
+                a = np.cos(theta)
+                b = np.sin(theta)
+                x0 = a * rho
+                y0 = b * rho
+                x1 = int(x0 + 1000 * (-b))
+                y1 = int(y0 + 1000 * (a))
+                x2 = int(x0 - 1000 * (-b))
+                y2 = int(y0 - 1000 * (a))
+                cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    
+    # Apply Probabilistic Hough Line Transform
+    linesP = cv2.HoughLinesP(edges, hough_rho, hough_theta, hough_threshold, 
+                             minLineLength=hough_min_line_length, maxLineGap=hough_max_line_gap)
+    
+    # Draw the vertical and horizontal lines detected by Probabilistic Hough Line Transform
+    if linesP is not None:
+        for line in linesP:
+            x1, y1, x2, y2 = line[0]
+            angle = np.arctan2(y2 - y1, x2 - x1)
+            # Filter based on angle
+            if (abs(angle) < angle_threshold or
+                abs(angle - np.pi/2) < angle_threshold or
+                abs(angle - np.pi) < angle_threshold or
+                abs(angle - 3*np.pi/2) < angle_threshold):
+                cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    
+    return img
+
+# Example usage
+output_img = detect_lines('image.jpg', apply_morphology=True, morph_kernel_size=(5, 5), morph_iterations=1)
+plt.figure(figsize=(10, 10))
+plt.imshow(cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB))
+plt.title('Detected Vertical and Horizontal Lines')
+plt.axis('off')
+plt.show()
