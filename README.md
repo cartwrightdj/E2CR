@@ -1,4 +1,4 @@
-# English Langugae Cursive Deteection
+# English Langugae Cursive Detection
 ComputerVision - Optcal Charachter Recognition - ML Classify
 
 ## dependencies
