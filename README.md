@@ -1,7 +1,7 @@
-### English Langugae Cursive Deteection
+# English Langugae Cursive Deteection
+ComputerVision - Optcal Charachter Recognition - ML Classify
 
-# dependencies
-
+## dependencies
 1 cv2
 2 os
 3 matplotlib
