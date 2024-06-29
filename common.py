@@ -5,79 +5,112 @@ import numpy as np
 from loguru import logger
 
 DEBUG = True
-DEBUG_FOLDER ="E:/E2CR/debug"
+DEBUG_FOLDER ="./debug"
+VERBOSIY = 1
 
-logger.remove()  # Remove the default logger
-if DEBUG:
-    logger.add(sys.stderr, level="TRACE")
-else:
-    logger.add(sys.stderr, level="INFO")
-log_file = "E2CR.log"
-logger.add(os.path.join(".", 'debug', log_file), format="{time: >14.4f} | {function} | {level} | {message}", level="TRACE", rotation="10 MB", compression="zip")
+def logging(level: int,logfile="e2cr.log"):
+    logger.remove()  # Remove the default logger
+    VERBOSIY = level
+    if DEBUG:
+        match VERBOSIY:
+            case 1:
+                
+                logger.add(sys.stderr, level="INFO")
+                logger.info(f"{Colors.OKGREEN}Setting Verbose Level to 'INFO'{Colors.ENDC}")
+            case 2:
+                
+                logger.add(sys.stderr, level="DEBUG")
+                logger.info(f"{Colors.OKBLUE}Setting Verbose Level to 'DEBUG'{Colors.ENDC}")
+            case 3:
+                
+                logger.add(sys.stderr, level="TRACE")
+                logger.info(f"{Colors.OKRED}Setting Verbose Level to 'TRACE'{Colors.ENDC}")
+
+    log_file = "E2CR.log"
+    logger.add(os.path.join(".", 'debug', log_file), format="{time: >14.4f} | {function} | {level} | {message}", level="TRACE", rotation="10 MB", compression="zip")
 
 cwd = os.getcwd()
 
-class DefaultParameters:
-    axis: str ='y'                              #default axis to operate in, most operations use 'y'
-    # Pre Processing
-    removeBorder: bool = True                   # attmpt to remove border from source image
-    # Denoise
-    applyDenoise = True                         # attmpt to remove noise from source image 
-    h = 9
-    tWindowSize = 5
-    sWindowSize = 5
-                            
-    useAdaptiveThreshold = True                 # used by apply_adaptive_threshold    
-    applyErode = False                           # used by apply_erosion
-    erodeKernel = np.ones((5, 5), np.uint8)     # used by apply_erosion
-    threshold = None                            # used by apply_erosion
-    maxValue = None                             # used by apply_erosion
-    applyDilation = False                        #used by apply_erosion
+FBCC_RECT =         0b00001
+FBCC_AREA =         0b00010
+CC_AREA_THRESH =    0b00100
+CC_FRAME =          0b01000
+FBCC_SIZE =           0b10000          
+
+
+class Parameters:
+    axis: str = 'y'  # Default axis to operate in, most operations use 'y'
+    expectedTextRowHeight = 60
+    
+    class preProcessing:
+        removeBorder: bool = True  # Attempt to remove border from source image
+        applyDenoise = True  # Attempt to remove noise from source image 
+        h = 9
+        tWindowSize = 5
+        sWindowSize = 5
+        
+        class thresHold:
+            # Adaptive Threshold                        
+            useAdaptiveThreshold = True  # Scanned images with variation in shading need to be adaptively thresholded 
+            adaptiveBlockSize = None  # Left as None, settings will be made based on statistics of the image
+            adaptiveC = None  
+
+    applyErode = False  # Used by apply_erosion
+    erodeKernel = np.ones((5, 5), np.uint8)  # Used by apply_erosion
+    threshold = None  # Used by apply_erosion
+    maxValue = None  # Used by apply_erosion
+    applyDilation = False  # Used by apply_erosion
     dilateKernalSize = (5, 5)
     applyMorphology = False
-    
-    # AdaptiveShreshold
-    adaptiveBlockSize = 21
-    adaptiveC = 4 
+
     # Normal Threshold
-    simple_threshold = 120
+    simple_threshold = 100
     simple_max_value = 255
     # Morphology
     morphKernelSize = (3, 3)
     # Remove Spackle
-    max_area_size = 90                          #Threshold area to determine which black areas to remove. Any connected component (black area) with an area smaller than this threshold will be removed.
-    rs_threshold_value = 128                        #The threshold value used to binarize the image. Pixels with a value greater than or equal to this value are set to 0 (black) and the rest to max_value (white) when using cv2.THRESH_BINARY_INV.
-    rs_max_value = 255                              #The maximum value to use with the THRESH_BINARY_INV thresholding.
-    connectivity = 8                             #Connectivity to use when finding connected components. 4 for 4-way connectivity, 8 for 8-way connectivity.       
+    max_area_size = 70  # Threshold area to determine which black areas to remove.
+    rs_threshold_value = 128  # The threshold value used to binarize the image.
+    rs_max_value = 255  # The maximum value to use with the THRESH_BINARY_INV thresholding.
+    connectivity = 8  # Connectivity to use when finding connected components.
 
-
-    useCumulativeSum: bool = True              # will create a cumulative sum for pixels across image axis, to find high points for thresholding
+    useCumulativeSum: bool = False  # Will create a cumulative sum for pixels across image axis, to find high points for thresholding
     subOnDecrease = True
-    threshRate = 95                              # used to find indexes for row/columns with the highest values (least black), will only use rows/colums over this % of the maximum row/column sum(or cumulative sum)
+    
+    class Segmentation:
+        threshRate = 95  # Used to find indexes for row/columns with the highest values (least black)
+
+        filterByDistance: bool = True
+        filterByDistance_mode = 'both'   
     seek_ibp_loss = None
     eps = 10
     min_samples = 1
     findPeaks = False
     prominence = None
-    distance = None
+    distance = 30
     max_threshRate_loss = 95
-    f_proximity = 5
-
+    f_proximity = expectedTextRowHeight /3
     usefilterValsByProximity = True
     min_white_space = 15
+    find_peaks_in_cluster_method = 'y_max'
     
-
-    method='y_max'
-
-    # Path Finding
-    log_cost_factor = 15
-    bias_factor = 10
-    gradient_actor = 5
+    class pathFinder:
+        log_cost_factor = 15
+        bias_factor = 10
+        gradient_factor = 5
+        filterIndexByProximitySelector = 'v_max'
+    
+    class ccFilter:
+        cc_threshold = 50
+        cc_hw_ratio = 6
+        cc_area_threshold = 3000 
+        cc_area_threshold_ratio = .2
+        cc_frame = 30
 
     def __init__(self, **kwargs):
         # Set instance variables based on class-level defaults or provided values
         for attr in self.default_attributes():
-            setattr(self, attr, kwargs.get(attr, getattr(self.__class__, attr)))
+            setattr(self, attr, kwargs.get(attr, getattr(self.__class__, attr)))    
     
     @classmethod
     def default_attributes(cls):
@@ -97,16 +130,29 @@ class DefaultParameters:
             print(f"{attr}: {value}")
 
     @classmethod
-    def print_defaults(cls):
+    def print_params(cls):
         """
-        Print each class-level default variable and its value.
+        Print each class-level parameter and its value, including nested subclasses.
         """
-        for attr, value in cls.__dict__.items():
-            if not callable(value) and not attr.startswith("__"):
-                print(f"{attr}: {value}")
+        def print_class_params(c, prefix=''):
+            # Print parameters for the given class
+            for attr, value in c.__dict__.items():
+                if not callable(value) and not str(attr).startswith("__"):
+                    full_attr = f"{prefix}{attr}"
+                    if value is None:
+                        value_str = "None"
+                    elif isinstance(value, (np.ndarray, tuple)):
+                        value_str = ", ".join(map(str, value))
+                    else:
+                        value_str = str(value)
+                    print(f"{full_attr}: {value_str}")
+                
+                # Recursively print nested classes
+                if isinstance(value, type) and issubclass(value, object):
+                    print_class_params(value, prefix=f"{attr}.")
 
-
-
+        # Print parameters starting from the top-level class
+        print_class_params(cls)
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -128,33 +174,57 @@ class Colors:
     WHITE = (255, 255, 255)
     BLACK = (0, 0, 0)
 
+stats = []
+
 class Statistics:
-    fhp_loss = 0
-    chp_loss = 0
-    paths_found = 0
-    text_rows = 0
+    fileName = None
+    findPathStartPoints_loss =  None
+    filterIndexByValThreshold_loss = None
+    filterValsByProximity_loss = None
+    filterByDistance_loss = None
 
-    y_init_peaks = 0                        # number of candidate break points from initial filtering  
-    y_pf_loss = 0                           # percent of break points lost to prominence filter
-    y_ibp_loss = 0                          # percent n axis elements lost by initial filtering  
-    y_df_loss = 0                        
+    CalculatedRowHight = None
+                        
 
-    @staticmethod
-    def display():
-        params = Statistics.__dict__
-        function_params = {
-            "apply_denoising": ["text_rows"],
-            "y_init_peaks": ["y_init_peaks"],
-            "y_ibp_loss": ["y_ibp_loss"],
-            "y_pf_loss": ["y_pf_loss"]
-         }
+    @classmethod
+    def display(cls):
+        """
+        Print each class-level parameter and its value.
+        """
+        # Find the maximum length of parameter names and values
+        max_attr_length = max(len(attr) for attr in cls.__dict__.keys() if not callable(getattr(cls, attr)) and not str(attr).startswith("__"))
+        values = [value for attr, value in cls.__dict__.items() if not callable(value) and not str(attr).startswith("__")]
+        max_val_length = max(len(str(value)) if value is not None and not isinstance(value, (np.ndarray, tuple)) else len(", ".join(map(str, value))) if isinstance(value, (np.ndarray, tuple)) else 0 for value in values)
 
-        print(f"\nStatistics:")     
-        for func, keys in function_params.items():
-            param_str = ', '.join([f"{key}={params[key]}" for key in keys if params[key] is not None])
-            print(f"Stat: {param_str}")
+        # Print header
+        print(f"{Colors.BOLD}{'Metric':<{max_attr_length}} {'Value':<{max_val_length}}{Colors.ENDC}")
+
+        # Print each parameter and its value
+        for attr, value in cls.__dict__.items():
+            if not callable(value) and not str(attr).startswith("__"):
+                attr_str = f"{attr:<{max_attr_length}}"
+                value = str(value)
+                if value is None:
+                    value_str = "None"
+                elif isinstance(value, (np.ndarray, tuple)):
+                    value_str = ", ".join(map(str, value))
+                else:
+                    value_str = f"{value:<{max_val_length}}"
+                print(f"{attr_str} {'.' * (max_val_length - len(value_str))} {value_str}")
+
 
     @staticmethod
     def set_statistic(name: str, value: float):
         setattr(Statistics, name, value)
+
+    @classmethod
+    def clear(cls):
+        """
+        Clear the data in the class by setting all class-level parameters to None.
+        """
+        for attr in cls.__dict__.keys():
+            if not callable(getattr(cls, attr)) and not str(attr).startswith("__"):
+                setattr(cls, attr, None)
+
+
 

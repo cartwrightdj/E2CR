@@ -1,40 +1,33 @@
 import cv2
 import numpy as np
+import os
 from common import *
 from sklearn.cluster import DBSCAN
 from loguru import logger
 from heapq import heappop, heappush
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from imageman import visual_debug, percentWhite
+import csv
+from imageman import draw_path_on_image, cropRowsFromImage, cropTextFromRow,crop_image_to_content, percentWhite
+from plotting import *
+from imageutils import get_image_stats
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 
-def getLineStats(line):
-    """
-    Compute the minimum and maximum y-coordinates for a given line.
-
-    Args:
-        line (list of tuples): A line represented by a list of (y, x) points.
-
-    Returns:
-        tuple: Minimum and maximum y-coordinates of the line.
-    """
-    if not line:
-        raise ValueError("Line is empty")
-
-    min_y = min(y for y, x in line)
-    max_y = max(y for y, x in line)
-
-    return min_y, max_y
-
-def findInitialBreakPoints(image: np.ndarray, axis: str = DefaultParameters.axis,
-                           useCumulativeSum: bool = DefaultParameters.useCumulativeSum,                            
-                           threshRate: float = DefaultParameters.threshRate, 
-                           distance: int = DefaultParameters.distance, 
-                           findpeaks = DefaultParameters.findPeaks, 
-                           prominence: float = DefaultParameters.prominence,
-                           max_threshRate_loss: float = DefaultParameters.max_threshRate_loss,
-                           usefilterValsByProximity: bool = DefaultParameters.usefilterValsByProximity) -> tuple[np.ndarray, np.ndarray]:
+def findPathStartPoints(image: np.ndarray, axis: str = Parameters.axis,
+                        expectedTextRowHeight: int = Parameters.expectedTextRowHeight,
+                           useCumulativeSum: bool = Parameters.useCumulativeSum,                            
+                           threshRate: float = Parameters.Segmentation.threshRate, 
+                           distance: int = Parameters.distance, 
+                           findpeaks = Parameters.findPeaks, 
+                           prominence: float = Parameters.prominence,
+                           max_threshRate_loss: float = Parameters.max_threshRate_loss,
+                           usefilterValsByProximity: bool = Parameters.usefilterValsByProximity,
+                           eps = Parameters.eps,
+                           min_samples=Parameters.min_samples,
+                           find_peaks_in_cluster_method = Parameters.find_peaks_in_cluster_method) -> tuple[np.ndarray, np.ndarray]:
     """
     Calculate the histogram or projection of an image across a given axis and find high points (peaks) in the histogram.
 
@@ -49,8 +42,9 @@ def findInitialBreakPoints(image: np.ndarray, axis: str = DefaultParameters.axis
         peaks (np.ndarray): Indices of high points (peaks) above the threshold.
         projection (np.ndarray): The projection of the image along the specified axis.
     """
-    logger.trace((f"findInitialBreakPoints(image: np.ndarray, axis: {axis}, useCumulativeSum: {useCumulativeSum},threshRate: {threshRate}, distance: {distance}, findPeaks: {findpeaks}, prominence: {prominence}: max_ibp_loss: {max_threshRate_loss}"))
+    logger.trace((f"findPathStartPoints(image: np.ndarray, axis: {axis}, useCumulativeSum: {useCumulativeSum},threshRate: {threshRate}, distance: {distance}, findPeaks: {findpeaks}, prominence: {prominence}: max_ibp_loss: {max_threshRate_loss}"))
    
+    fname = Statistics.fileName
 
     # Check if the input axis is valid
     if axis not in ['x', 'y']:
@@ -63,98 +57,53 @@ def findInitialBreakPoints(image: np.ndarray, axis: str = DefaultParameters.axis
 
     # Calculate the projection by summing pixel values along the specified axis
     sum_axis = 1 if axis == 'y' else 0
+    projection = np.sum(image, axis=sum_axis)
 
-    if useCumulativeSum:
-        logger.info(f"Projecttion is Using Cumulative Sum" )
-        cs_image, projection = cumSum(image)
-        if DEBUG:
-            cv2.imwrite(os.path.join(DEBUG_FOLDER, 'cs_image.jpg'), cs_image)
-            logger.trace(f"Saved image with initial break points to: {os.path.join(DEBUG_FOLDER, 'cs_image.jpg')}")
-            with open(os.path.join(DEBUG_FOLDER, 'cs_image.csv'), 'w') as file:
-                file.write("Row, Cumulative Sum\n")
-                for row_num, value in enumerate(projection):
-                    file.write(f"{row_num}, {value}\n")
-    else:
-        projection = np.sum(image, axis=sum_axis)
+    #calculate_projection_profile_and_peaks(image)
 
-    peaks, _ = filterValsByThreshold(projection,threshRate=threshRate,max_theshRate_loss=max_threshRate_loss)     # Filter by threshold
+    peaks, Statistics.filterIndexByValThreshold_loss = filterIndexByValThreshold(projection,threshRate=threshRate,max_theshRate_loss=max_threshRate_loss)     # Filter by threshold
     if DEBUG:
         threshold_peaks = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR)
-        for peak in peaks:
+        for peak, value in peaks:
             cv2.line(threshold_peaks, (0, peak), (image.shape[1], peak), Colors.RED, 2)
-        cv2.imwrite(os.path.join(DEBUG_FOLDER, 'threshold_peaks.jpg'), threshold_peaks)
+            cv2.putText(threshold_peaks, f"y:{peak}", (25, peak - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, Colors.BLUE, 2)
+        cv2.imwrite(os.path.join(DEBUG_FOLDER, f'{fname}_threshold_peaks.jpg'), threshold_peaks)
+
+    # calculate the expected hight of text rows using results from filterIndexByValThreshold
+    consec_area_bounds = filterMinNConsecutive([a for a, b in peaks],3)
+    avg, dist = average_distance(consec_area_bounds)
+    distance = int(avg + np.std(dist))
+    Statistics.CalculatedRowHight = distance
+    Parameters.expectedTextRowHeight = distance
+    logger.info(f"Parameters.expectedTextRowHeight has been set to {distance}")
+    
 
     if usefilterValsByProximity:
-        peaks, _ = filterValsByProximity(peaks)                                     # filter out consecutive 'peaks'
+        peaks, Statistics.filterValsByProximity_loss = selectValsByProximity(peaks,Parameters.f_proximity,selector='v_max')                                     # filter out consecutive 'peaks'
         if DEBUG:
             Proximity_peaks = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR)
             for peak in peaks:
-                cv2.line(Proximity_peaks, (0, peak), (image.shape[1], peak), Colors.RED, 2)
-            cv2.imwrite(os.path.join(DEBUG_FOLDER, 'Proximity_peaks.jpg'), Proximity_peaks)
-    
-    # Ensure distance is non-negative
-    if distance is not None and distance < 0:
-        logger.error(f"Distance {distance} is negative. Setting distance to None.")
-        distance = None
-
-    logger.critical(f"Snnity Check: len(peaks): {len(peaks)}")
-  
-
-    # Ensure prominence is non-negative
-    if prominence is not None and prominence < 0:
-        logger.error(f"Prominence {prominence} is negative. Setting prominence to None.")
-        prominence = None
-
-    # Manually find peaks
-    if findpeaks:
-        pass
-        # Need to impliment something better here or disregard
-
-
-    # Apply prominence filter if specified
-    
-    if prominence:
-        pre_prom = len(peaks)
-        op = prominence 
-        prominence = max(projection) * (prominence/100) # Refactor prominence to be a percent of the max peak
-        logger.info(f"prominence set to:{prominence} ({op}%), max: {max(projection)}, filtering {pre_prom} break points") 
-        valid_peaks = []
-        for peak in peaks:
-            left_base = peak
-            while left_base > 0 and projection[left_base] > projection[left_base - 1]:
-                left_base -= 1
-            right_base = peak
-            while right_base < len(projection) - 1 and projection[right_base] > projection[right_base + 1]:
-                right_base += 1
-            peak_prominence = projection[peak] - max(projection[left_base], projection[right_base])
-            if peak_prominence >= prominence:
-                valid_peaks.append(peak)
-        peaks = valid_peaks
-        pf_loss = len(peaks)/pre_prom * 100
-        Statistics.set_statistic(axis + "_pf_loss", pf_loss)
-        logger.debug(f"prominence filter removed {pre_prom - len(peaks)} of {pre_prom} break points, leaving {len(peaks)}") 
-
+                cv2.line(Proximity_peaks, (0, int(peak)), (image.shape[1], int(peak)), Colors.RED, 2)
+                cv2.putText(Proximity_peaks,f"{int(peak)}",(2,int(peak)),cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+            cv2.imwrite(os.path.join(DEBUG_FOLDER, f'{fname}_selectValsByProximity.jpg'), Proximity_peaks)
+      
     # Apply distance filter if specified
     if distance:
-        pre_dist = len(peaks)
-        logger.debug(f"Filtering {len(peaks)} by distance of {distance}")
-        filtered_peaks = []
-        last_peak = -distance  # Initialize to a value to allow the first peak
-        for peak in peaks:
-            if peak - last_peak >= distance:
-                filtered_peaks.append(peak)
-                last_peak = peak
-            else:
-                logger.debug(f"Removed {peak} which was {peak - last_peak} from {last_peak}")
-        peaks = filtered_peaks
-        df_loss = len(peaks)/pre_dist * 100
-        Statistics.set_statistic(axis + "_df_loss", df_loss)
-        logger.debug(f"distance filter removed {pre_dist - len(peaks)} of {pre_dist} break points, leaving {len(peaks)}")
-
+        peaks, Statistics.filterByDistance_loss = filterByDistance(peaks,image,distance,expectedTextRowHeight )
+        if DEBUG: visual_debug(image,axis='y',action='draw_lines',values=peaks,operation_name="filterByDistance",alternate=True)
+            
+    #clusters, labels = group_by_proximity(peaks, eps, min_samples)
+    
+    #if DEBUG: visual_debug(image,axis='y',action='draw_lines',values=peaks,operation_name="group_by_proximity",alternate=True)
+    
+    #peaks = findClusterBreakpoints(clusters, projection, method=find_peaks_in_cluster_method)
+    #if DEBUG: visual_debug(image,axis='y',action='draw_lines',values=peaks,operation_name="find_breakpoints")
+        
     #peaks = np.array(peaks)
-    ibp_loss = ((1 - len(peaks)) / len(projection)) * 100
-    logger.debug(f"Returning {len(peaks)} of {len(projection)}, {ibp_loss} % loss")
-    return peaks, projection
+    fpsp_loss = (1-(len(peaks) / len(projection))) * 100
+    Statistics.findPathStartPoints_loss = fpsp_loss
+    logger.debug(f"Returning {len(peaks)} of {len(projection)}, {fpsp_loss} % loss")
+    return np.unique(peaks), projection
 
 def group_by_proximity(data, eps, min_samples):
     """
@@ -183,7 +132,7 @@ def group_by_proximity(data, eps, min_samples):
         logger.warning(f"Segmentation: Grouping by Proximity of {len(data)} break points; eps={eps}, min_samples={min_samples}")
         return [], np.ndarray(1)
     
-    logger.debug(f"Received {len(data)} break points; eps={eps}, min_samples={min_samples}")
+    logger.debug(f"Finding clusters in {len(data)} break points. eps:{eps}, min_samples:{min_samples}")
     logger.trace(f"Break Points: {data}")
 
     # Convert data to numpy array and reshape for DBSCAN
@@ -265,7 +214,7 @@ def split_large_breaks(int_list, threshold):
     logger.trace(f"Split large breaks with threshold {threshold}: {sorted_list}")
     return sorted_list
 
-def find_breakpoints(clusters, data=None, method='index_average', threshold=50, split_large_breaks_flag=False):
+def findClusterBreakpoints(clusters, data=None, method='index_average', threshold=50, split_large_breaks_flag=False):
     """
     Find breakpoints in clusters using the specified method ('y_max', 'y_average', or 'index_average').
     
@@ -286,6 +235,7 @@ def find_breakpoints(clusters, data=None, method='index_average', threshold=50, 
         if data is None:
             raise ValueError("Data is required for method 'y_max'")
         # Find breakpoints based on the maximum value in each cluster
+ 
         for cluster in clusters:
             if len(cluster) == 0:
                 continue
@@ -329,7 +279,10 @@ def find_breakpoints(clusters, data=None, method='index_average', threshold=50, 
     logger.trace(f"Final breakpoints: {breakpoints}")
     return breakpoints
 
-def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=DefaultParameters.log_cost_factor, bias_factor=DefaultParameters.bias_factor, gradient_factor=DefaultParameters.gradient_actor):
+def findLineBetweenRowsOfText(image, start, axis='y',
+                            log_cost_factor=Parameters.pathFinder.log_cost_factor, 
+                            bias_factor=Parameters.pathFinder.bias_factor, 
+                            gradient_factor=Parameters.pathFinder.gradient_factor):
     """
     Find the shortest path in a binary image using a modified Dijkstra's algorithm with exponential and bias costs.
 
@@ -341,11 +294,12 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
     log_cost_factor -- float, the factor for logarithmic cost (penalizes vertical movements based on the exponential distance)
     bias_factor -- float, the factor for bias cost (penalizes deviations from the starting row)
     gradient_factor -- float, the factor for gradient cost (penalizes crossing high-gradient regions, discouraging the path from crossing text lines or words)
+    csv_file -- str, the CSV file to write the paths data to
 
     Returns:
     path -- list of tuples, the sequence of points in the shortest path
     """
-    logger.debug(f"Finding Shortest Path from: {start}")
+ 
     logger.trace(f"start: {start}, axis={axis}, log_cost_factor={log_cost_factor}, bias_factor={bias_factor}, gradient_factor={gradient_factor}")
     
     if not (len(image.shape) == 2):
@@ -353,6 +307,8 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
         exit(100)
 
     rows, cols = image.shape
+
+    gradients = calculate_gradients(image)
 
     # Check if the start index is within valid bounds
     if (axis == 'y' and (start < 0 or start >= rows)) or (axis == 'x' and (start < 0 or start >= cols)):
@@ -366,8 +322,9 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
         size1, size2 = cols, rows
         directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # Directions: left, right, up, down
 
-    logger.trace(f"size1: {size1}, size2: {size2}, directions: {directions}")
+    #logger.trace(f"size1: {size1}, size2: {size2}, directions: {directions}")
 
+    
     # Initialize distance and previous node arrays
     dist = np.full((size1, size2), np.inf, dtype=np.float64)
     prev = np.full((size1, size2), None, dtype=object)
@@ -380,13 +337,11 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
         dist[0, start] = float(image[0, start])
         queue = [(dist[0, start], 0, start)]
 
-
     while queue:
         curr_dist, pos1, pos2 = heappop(queue)
         
-
         if pos2 == size2 - 1:
-            logger.debug(f"Reached the end of the axis:{axis} at position: ({pos1}, {pos2})")
+            #logger.trace(f"Reached the end of the axis:{axis} at position: ({pos1}, {pos2})")
             break
 
         for d1, d2 in directions:
@@ -402,7 +357,6 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
                     prev[new_pos1, new_pos2] = (pos1, pos2)
                     heappush(queue, (new_dist, new_pos1, new_pos2))
                     
-
     path = []
     min_dist = np.inf
     min_pos1 = -1
@@ -416,8 +370,6 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
         logger.warning("No valid path found")
         return path
 
-    logger.debug(f"Minimum distance at end of axis: {min_dist}, Position: {min_pos1}")
-
     pos1, pos2 = min_pos1, size2 - 1
 
     while (pos1, pos2) != (start, 0):
@@ -428,20 +380,32 @@ def find_shortest_path_new(image, gradients, start, axis='y', log_cost_factor=De
     path.append((start, 0) if axis == 'y' else (0, start))
     path.reverse()
 
-    logger.debug(f"Path found for start point: {start}")
+    # Collect path data (start, min, max, end)
+    start_pos = path[0]
+    end_pos = path[-1]
+    min_pos = min(path, key=lambda x: x[1] if axis == 'y' else x[0])
+    max_pos = max(path, key=lambda x: x[1] if axis == 'y' else x[0])
+    total_length = len(path)
+    sum_distances = sum(np.linalg.norm(np.array(path[i]) - np.array(path[i-1])) for i in range(1, len(path)))
+    avg_gradient = np.mean([gradients[p[0], p[1]] for p in path] if axis == 'y' else [gradients[p[1], p[0]] for p in path])
 
+    if len(path) < cols:
+        logger.warning(f"The path found is shorter than axis, path length:{len(path)}, axis size:{cols}")
+
+    # Write path data to CSV
+    if DEBUG:
+        with open(os.path.join(DEBUG_FOLDER, 'path_data.csv'), mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([start_pos, min_pos, max_pos, end_pos, total_length, sum_distances, avg_gradient])
+
+    logger.debug(f"Starting at {start}, distance of axis is: {len(path)}, value of: {min_dist}, ending at: {min_pos1}")
     return path
 
-def findTextSeperation(baseImage, axis='y',
-                       threshRate: int = DefaultParameters.threshRate,
-                        distance = DefaultParameters.distance,
-                        prominence = DefaultParameters.prominence,
-                        eps = DefaultParameters.eps,
-                        min_samples = DefaultParameters.min_samples,
-                        method = DefaultParameters.method,
-                        log_cost_factor = DefaultParameters.log_cost_factor,
-                        bias_factor = DefaultParameters.bias_factor,
-                        gradient_factor = DefaultParameters.gradient_actor
+def findTextRowSeperationPaths(image, axis='y',
+                       threshRate: int = Parameters.Segmentation.threshRate,
+                        log_cost_factor = Parameters.pathFinder.log_cost_factor,
+                        bias_factor = Parameters.pathFinder.bias_factor,
+                        gradient_factor = Parameters.pathFinder.gradient_factor
                           ): 
     """
     Find paths in the binary image using thresholding, clustering, and shortest path algorithms.
@@ -456,68 +420,18 @@ def findTextSeperation(baseImage, axis='y',
     Returns:
     paths_found -- list of lists of tuples, the found paths
     """
+    
 
-    height, width = baseImage.shape[:2]
+    height, width = image.shape[:2]
     logger.debug(f"Base image dimensions: height={height}, width={width}")
   
-    peaks, projection = findInitialBreakPoints(baseImage,threshRate=threshRate) # US################ need to pass through arguments !
+    peaks, projection = findPathStartPoints(image,threshRate=threshRate) # US################ need to pass through arguments !
     
-    # Debugging: create image with initial break points
-    if DEBUG:
-        if len(baseImage.shape) == 2:
-            initImg = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
-        elif baseImage.shape[2] == 3:
-            initImg = baseImage.copy()
-        else:
-            raise ValueError("Unsupported number of channels in the input image: {baseImage.shape}")
-
-        for peak in peaks:
-            if axis == 'y':
-                initImg = cv2.line(initImg, (0, peak), (initImg.shape[1], peak), color=(0, 0, 255), thickness=2)
-                cv2.putText(initImg, f"Yinit: {peak}", (5, peak - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 2)
-            else:
-                initImg = cv2.line(initImg, (peak, 0), (peak, initImg.shape[0]), color=(0, 0, 255), thickness=2)
-                cv2.putText(initImg, f"Xinit: {peak}", (peak + 5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 2)
-        cv2.imwrite(os.path.join(DEBUG_FOLDER, 'dbgInitialBreakPoints.jpg'), initImg)
-        logger.trace(f"Saved image with initial break points to: {os.path.join(DEBUG_FOLDER, 'dbgInitialBreakPoints.jpg')}")
-
-    logger.trace(f"Finding clusters of break points. eps:{eps}, min_samples:{min_samples}")
-    clusters, labels = group_by_proximity(peaks, eps, min_samples)
-
-    if DEBUG:
-        c = Colors.RED
-        clustImg = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
-        for cluster in clusters:
-            for peak in cluster:
-                if axis == 'y':
-                    clustImg = cv2.line(clustImg, (0, peak), (clustImg.shape[1], peak), color=c, thickness=2)
-                else:
-                    clustImg = cv2.line(clustImg, (peak, 0), (peak, clustImg.shape[0]), color=c, thickness=2)
-            c = Colors.BLUE if c == Colors.RED else Colors.RED
-        cv2.imwrite(os.path.join(DEBUG_FOLDER, 'dbgBreakPointClusters.jpg'), clustImg)
-        logger.trace(f"Saved image with break points clusters to: {os.path.join(DEBUG_FOLDER, 'dbgBreakPointClusters.jpg')}")
-
-    peaks = find_breakpoints(clusters, projection, method=method)
-
-    if DEBUG:
-        clustImgPeaks = cv2.cvtColor(baseImage.copy(), cv2.COLOR_GRAY2BGR)
-        c = Colors.RED
-        for peak in peaks:
-            if axis == 'y':
-                clustImgPeaks = cv2.line(clustImgPeaks, (0, peak), (clustImgPeaks.shape[1], peak), color=c, thickness=2)
-                cv2.putText(clustImgPeaks, f"Yclust: {peak}", (25, peak - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
-            else:
-                clustImgPeaks = cv2.line(clustImgPeaks, (peak, 0), (peak, clustImgPeaks.shape[0]), color=c, thickness=2)
-                cv2.putText(clustImgPeaks, f"Xclust: {peak}", (peak + 5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
-            c = Colors.BLUE if c == Colors.RED else Colors.RED
-        cv2.imwrite(os.path.join(DEBUG_FOLDER, 'dbgClusterPeaks.jpg'), clustImgPeaks)
-        logger.trace(f"Saved image with peak break points clusters to: {os.path.join(DEBUG_FOLDER, 'dbgClusterPeaks.jpg')}")
-
-    gradients = calculate_gradients(baseImage)
-    thresh_image = cv2.bitwise_not(baseImage)
+    
+    # = cv2.bitwise_not(baseImage)
 
     paths_found = []
-    pathImg = baseImage.copy()
+    pathImg = image.copy()
 
     if axis == 'y':
         valid_peaks = [peak for peak in peaks if 0 <= peak < height]
@@ -526,9 +440,10 @@ def findTextSeperation(baseImage, axis='y',
         valid_peaks = [peak for peak in peaks if 0 <= peak < width]
         valid_peaks.append(width - 1)
     logger.trace(f"Found {len(valid_peaks)} valid peaks.")
+    
 
     for peak in valid_peaks:
-        shortest_path = find_shortest_path_new(thresh_image, gradients, peak, axis=axis, log_cost_factor=log_cost_factor, bias_factor=bias_factor, gradient_factor=gradient_factor)
+        shortest_path = findLineBetweenRowsOfText(image, peak, axis=axis, log_cost_factor=log_cost_factor, bias_factor=bias_factor, gradient_factor=gradient_factor)
         paths_found.append(shortest_path)
 
     return paths_found
@@ -568,130 +483,125 @@ def colTransitionPoints(image, threshold=3):
 
     return transitions
 
-def cumSum(image, subOnDecrease: bool = DefaultParameters.subOnDecrease):
+def selectValsByProximity(indexes_with_sum, proximity: int = Parameters.f_proximity, selector='v_max'):
     """
-    Create a color image where each pixel represents the cumulative sum of all previous pixels in the source image,
-    distributed evenly across the three color channels. Also, create a matrix with the row number and the final sum for each row.
-    
-    Args:
-        image (np.ndarray): The input image (grayscale or color).
-        
+    Filters values in a list by grouping values that are within a certain proximity of each other.
+
+    Parameters:
+    indexes_with_sum (list of tuples): List of tuples where each tuple contains an index and its corresponding sum.
+    proximity (int): The maximum distance between values to consider them as part of the same group.
+    selector (str): Selector indicating how to handle grouping.
+
     Returns:
-        np.ndarray: The output color image with cumulative sums distributed across channels.
-        np.ndarray: The matrix with row numbers and final cumulative sums.
+    tuple: (filtered_values, loss_percentage)
+        filtered_values (list of int): The filtered list of values, including start and end of each group.
+        loss_percentage (float): The percentage of values lost due to filtering.
     """
-    logger.trace(f"cumSum(image, subOnDecrease: {subOnDecrease})")
-    # Convert to grayscale if the image is not already
-    if len(image.shape) == 3:
-        grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    elif len(image.shape) == 2:
-        grayscale_image = image
-    else:
-        raise ValueError("Input image must be either a grayscale or a color image")
-    
-    # Invert the grayscale image
-    #grayscale_image = cv2.bitwise_not(grayscale_image)
-    
-    # Compute the maximum sum a row could have
-    height, width = grayscale_image.shape
-    max_sum = width * 255
-    
-    # Thresholds for each channel
-    threshold1 = max_sum / 3
-    threshold2 = 2 * threshold1
-    
-    # Initialize the cumulative sum and color image
-    color_image = np.zeros((*grayscale_image.shape, 3), dtype=np.uint8)
-    cumulative_sums = []
+    logger.trace(f"Filtering values in a list {len(indexes_with_sum)} values long, by a proximity of {proximity}, selector: {selector}")
 
-    pbar = tqdm(total=height*width, desc="Building Cumulative Sum of Image")
-    for row in range(height):
-        cumulative_sum = 0
-        
-        for col in range(width):
-            pixel_value = grayscale_image[row, col]
-            if col > 0:
-                if grayscale_image[row, col] < grayscale_image[row, col-1] and subOnDecrease:
-                    cumulative_sum -= pixel_value
-                else:
-                    cumulative_sum += pixel_value
-            if cumulative_sum <= threshold1:
-                color_image[row, col, 0] = int((cumulative_sum / threshold1) * 255)
-            elif cumulative_sum <= threshold2:
-                color_image[row, col, 0] = 255
-                color_image[row, col, 1] = int(((cumulative_sum - threshold1) / threshold1) * 255)
-            else:
-                color_image[row, col, 0] = 255
-                color_image[row, col, 1] = 255
-                color_image[row, col, 2] = int(((cumulative_sum - threshold2) / threshold1) * 255)
-            pbar.update(1)
-        cumulative_sums.append(cumulative_sum)
-        
-    
-    cumulative_sums_matrix = np.array(cumulative_sums, dtype=np.int64)
-    if DEBUG: cv2.imwrite(os.path.join(DEBUG_FOLDER, 'cumsum.jpg'), color_image)
-
-    
-    return color_image, cumulative_sums_matrix
-
-def filterValsByProximity(values, proximity: int = DefaultParameters.f_proximity):
-    logger.trace(f"Filtering values in a list {len(values)} values long, by a proximity of {proximity}")
-
-    if not len(values) > 1:
+    # If the list has 1 or fewer elements, return an empty list and 0.0 loss percentage
+    if len(indexes_with_sum) <= 1:
         return [], 0.0
 
-    result = []
-    start = values[0]
-    last_v = values[0]
+    filtered_values = []  # List to store the filtered values
+    start = indexes_with_sum[0][0]  # Start of the current group
+    start_i = 0
+    last_i = 1
+    last_v = indexes_with_sum[0][0]  # Last value in the current group
+    max_value = indexes_with_sum[0][1]  # Max value in the current group
 
-    for v in values[1:]:
-        if v > last_v + proximity:
-            # End of current group
-            result.extend([start, last_v])
-            # Start new group
-            start = v
-        last_v = v
-    
+    # Iterate through the values starting from the second element
+    for i, i_s in enumerate(indexes_with_sum[1:]):
+        logger.trace(f"Index: {i}= row:{i_s[0]}, sum:{i_s[1]}, start:{start} last_v:{last_v}")
+        if i_s[0] > last_v + proximity:
+            logger.trace(f"Found a group from {start} to {last_v}")
+            # If the current value is farther than the proximity, end the current group
+            if selector == 'v_max':
+                if last_v-start>1:
+                    # Append all elements that have the max value within the current group
+                    max_value = max(iws[1] for iws in indexes_with_sum[start_i:last_i])
+                    logger.trace(f"Finding indexes in the group with max value {max_value}")
+                    #for iws in indexes_with_sum[start_i:last_i]:
+                    #    print(iws)
+                    max_elements = [iws[0] for iws in indexes_with_sum[start_i:last_i] if iws[1] == max_value]
+                    if len(max_elements) > 1:
+                        logger.trace(f"Multipe indexes in the group with max value {max_value}, using average: {np.sum(max_elements)/len(max_elements)}")
+                        filtered_values.append(int(np.sum(max_elements)/len(max_elements)))
+                    else:
+                        filtered_values.append(indexes_with_sum[i][0])
+
+                    logger.trace(f"Found {len(max_elements)} indexes in the group with max value {max_value}")
+                else:
+                    logger.trace(f"Single index: {max_value}")
+                    filtered_values.append(last_v)
+            else:
+                # Default behavior (current logic)
+                filtered_values.extend([start, last_v])  # Add start and last_v as they are
+
+            # Start a new group
+            start = i_s[0]   
+            start_i = i 
+
+        last_v = i_s[0]
+        last_i = i
+
     # Append the last group
-    result.extend([start, last_v])
+    if selector == 'y_max':
+        max_elements = [iws[0] for iws in indexes_with_sum[start:last_v+1] if iws[1] == max_value]
+        filtered_values.extend(max_elements)
+    else:
+        filtered_values.extend([start, last_v])  # Add start and last_v as they are
 
-    # Calculate loss percentage
-    unique_values = np.unique(values)
-    filtered_values = np.unique(result)
+    # Calculate the unique values before and after filtering
+    unique_values = np.unique([v for i, v in indexes_with_sum])
+    filtered_values = np.unique(filtered_values)
+
+    # Calculate the percentage of values lost due to filtering
     loss_percentage = (1 - len(filtered_values) / len(unique_values)) * 100
+    
 
-    logger.trace(f"Filtering values returning {len(result)} values. {loss_percentage:.2f}% loss")
-    return result, loss_percentage
+    logger.debug(f"Filtering values returning {len(filtered_values)} values. {loss_percentage:.2f}% loss")
+    logger.trace(f"Filtered Values: {filtered_values}")
 
-def filterValsByThreshold(values, threshRate: float = DefaultParameters.threshRate, max_theshRate_loss: float = DefaultParameters.max_threshRate_loss):
-    logger.trace(f"filterValsByThreshold(values, threshRate: {threshRate})")
+    return filtered_values, loss_percentage
+
+def filterIndexByValThreshold(values, threshRate: float = Parameters.Segmentation.threshRate, max_theshRate_loss: float = Parameters.max_threshRate_loss):
+    logger.info(f"Filtering values by Threshold of {threshRate}%")
+    logger.debug(f"threshRate: {threshRate} max_theshRate_loss: {max_theshRate_loss}")
 
     # Ensure thresholdRate is within 0 to 100%
     if 0 >= threshRate > 100:
-        logger.error(f"Threshold rate {threshRate}% is not valid, setting to defualt: {DefaultParameters.threshRate}.")
-        threshRate = DefaultParameters.threshRate
+        logger.error(f"Threshold rate {threshRate}% is not valid, setting to defualt: {Parameters.Segmentation.threshRate}.")
+        threshRate = Parameters.Segmentation.threshRate
 
     # Calculate the absolute threshold value based on the percentage of the max value
     max_value = np.max(values)
     threshold = max_value * (threshRate / 100)
 
-    logger.trace(f"Calculated threshold value: {threshold} (from {threshRate}% of max value {max_value})")
-    new_v = [i for i in range(len(values)) if values[i] > threshold]
+    logger.debug(f"Calculated threshold value: {threshold} (from {threshRate}% of max value {max_value})")
+    index_list = [i for i, v in enumerate(values) if v > threshold]
+
     # Calculate the number and percentage of filtered values
-    filtered_count = len(values) - len(new_v)
-    filtered_percentage = (filtered_count / len(values)) * 100
+    filtered_count = len(values) - len(index_list)
+    filtered_loss = (filtered_count / len(values)) * 100
+    
 
-    logger.trace(f"Threshold filtered: {filtered_count} from projection ({len(values)}, {filtered_percentage:.2f}% loss)")
+    logger.trace(f"Threshold filtered: {filtered_count} from projection ({len(values)}, {filtered_loss:.2f}% loss)")
 
-
-    if filtered_percentage > max_theshRate_loss:
-        logger.warning(f"Locating peaks resulted in too few break points, loss: {filtered_percentage}%. Returning all {len(values)} origional values. Try lowering threshold rate")
-        new_v = values
+    if filtered_loss > max_theshRate_loss:
+        logger.warning(f"Locating peaks resulted in too few break points, loss: {filtered_loss}%. Returning all {len(values)} origional values. Try lowering threshold rate")
+        index_list = list(range(len(values)))
     else:
-        logger.trace(f"Returning {len(new_v)} of {len(values)} points, loss: {filtered_percentage:.2f}%")
-    return new_v, filtered_percentage
+        logger.debug(f"Returning {len(index_list)} of {len(values)} points, loss: {filtered_loss:.2f}%")
+        logger.trace(f"Values {index_list}")
 
-def normalizeValsByProximity(values, proximity: int = DefaultParameters.min_white_space):
+    indexes_with_sum = []
+    for i in index_list:
+        indexes_with_sum.append([i, values[i]])
+
+    return indexes_with_sum, filtered_loss
+
+def normalizeValsByProximity(values, proximity: int = Parameters.min_white_space):
     logger.trace(f"Normalizing values in a list {len(values)} values long, by a proximity of {proximity}")
 
     if not values:
@@ -726,4 +636,199 @@ def normalizeValsByProximity(values, proximity: int = DefaultParameters.min_whit
 
     logger.trace(f"Normalizing values returning {len(unique_values)} values. {loss_percentage:.2f}% loss")
     return unique_values, loss_percentage
+
+def filterByDistance(values,image: np.ndarray,distance,expectedTextRowHeight,mode=Parameters.Segmentation.filterByDistance_mode,):
+    pre_dist = len(values)
+    
+    logger.trace(f"values: {values}")
+    filtered_peaks = []
+    if mode == 'tooclose' or mode == 'both':
+        logger.debug(f"Filtering {len(values)} values, for consecutive values that are close than {distance}")
+        last_peak = -distance  # Initialize to a value to allow the first peak
+        for value in values:
+            if value - last_peak >= expectedTextRowHeight/2:
+                filtered_peaks.append(int(value))
+                last_peak = value
+            else: logger.debug(f"Removed {value} which was {value - last_peak} from {last_peak}")
+                           
+        values = filtered_peaks
+        
+    if mode == 'toofar' or mode == 'both':
+        toofar = []
+        last_peak = values[0]  # Initialize to a value to allow the first peak
+        for i, value in enumerate(values):
+            if value - last_peak >= expectedTextRowHeight*2:
+                toofar.append((last_peak, value))
+            last_peak = value
+        fill = []
+        if len(toofar) > 0:
+            logger.info(f"Found {len(toofar)} location(s) that are two far apart")
+        for a, b in toofar:
+
+            pw = percentWhite(image[a:b,:])
+            print(f"{a}-{b}: Percent white: {pw}")
+            diff = int((b-a))
+            for i in range(a+expectedTextRowHeight,b,expectedTextRowHeight):
+                logger.debug(f"Addings start point at {i}, between: {a} and {b} diff:{a-b} (expectedTextRowHeight*2): {expectedTextRowHeight*2})")
+                fill.append(i)
+            
+        values.extend(fill)
+        values.sort()
+        values = np.unique(values)
+            
+    df_loss = (len(values)/pre_dist) * 100
+    
+    logger.debug(f"distance filter removed {pre_dist - len(values)} of {pre_dist} break points, leaving {len(values)}")
+    logger.trace(f"Returning peaks: {values}, loss: {df_loss}")
+    
+    return values, df_loss
+
+def filterByProminence(values,prominence: int = Parameters.prominence):
+    pre_prom = len(peaks)
+    op = prominence 
+    prominence = max(values) * (prominence/100) # Refactor prominence to be a percent of the max peak
+    logger.info(f"Filter by Prominence, prominence set to:{prominence} ({op}%), max: {max(values)}, filtering {pre_prom} break points") 
+    valid_peaks = []
+    for peak in peaks:
+        left_base = peak
+        while left_base > 0 and values[left_base] > values[left_base - 1]:
+            left_base -= 1
+        right_base = peak
+        while right_base < len(values) - 1 and values[right_base] > values[right_base + 1]:
+            right_base += 1
+        peak_prominence = values[peak] - max(values[left_base], values[right_base])
+        if peak_prominence >= prominence:
+            valid_peaks.append(peak)
+    peaks = valid_peaks
+    pf_loss = len(peaks)/pre_prom * 100
+    
+    logger.debug(f"prominence filter removed {pre_prom - len(peaks)} of {pre_prom} break points, leaving {len(peaks)}") 
+    return peaks, pf_loss
+
+def filterMinNConsecutive(values, consecutive_count):
+    """
+    Filters sequences of consecutive numbers from a list and returns pairs of 
+    start and stop values for sequences that meet or exceed a minimum consecutive count.
+
+    Parameters:
+    values (list of int): The list of integers to filter.
+    consecutive_count (int): The minimum length of consecutive sequences to be included in the result.
+
+    Returns:
+    list of int: A list containing pairs of start and stop values for each qualifying sequence.
+    """
+    if not values:
+        return []
+
+    result = []
+    start = 0  # Start index of the current sequence
+
+    # Iterate through the list starting from the second element
+    for i in range(1, len(values)):
+        # Check if the current value is not consecutive to the previous one
+        if values[i] != values[i - 1] + 1:
+            # Check if the current sequence length meets the minimum consecutive count
+            if i - start >= consecutive_count:
+                # Add the start and stop values of the sequence to the result
+                result.append([values[start],values[i-1]])
+                #result.append(values[i-1])
+            # Update the start index to the current index
+            start = i
+
+    # Check the last sequence after the loop ends
+    if len(values) - start >= consecutive_count:
+        # Add the start and stop values of the last sequence to the result
+        result.append([values[start],values[-1]])
+        
+
+    return result
+
+def average_distance(pairs):
+    if len(pairs) < 2:
+        return 0, []  # Return 0 and an empty list if there are fewer than 2 pairs
+    
+    distances = []
+    for i in range(len(pairs) - 1):
+        distance = abs(pairs[i][1] - pairs[i + 1][0])
+        distances.append(distance)
+    
+    average_distance = sum(distances) / len(distances)
+    return average_distance, distances
+
+def segment_image(sourceImage: np.array,axis='y',
+                       threshRate: int = Parameters.Segmentation.threshRate,
+                        log_cost_factor = Parameters.pathFinder.log_cost_factor,
+                        bias_factor = Parameters.pathFinder.bias_factor,
+                        gradient_factor = Parameters.pathFinder.gradient_factor
+                          ):
+    pass
+    # read / check filepast
+    # preProcessFile
+    logger.trace(f"segment_image: {sourceImage.size}") 
+    
+
+    start_points, projection = findPathStartPoints(sourceImage,threshRate=threshRate)
+
+    paths_found  = []
+    #for start_point in start_points:
+    #    shortest_path = findLineBetweenRowsOfText(sourceImage, start_point, axis=axis, log_cost_factor=log_cost_factor, bias_factor=bias_factor, gradient_factor=gradient_factor)
+    #    paths_found.append(shortest_path)
+
+    def findLineBetweenRowsOfTextWrapper(args):
+        source_image, start_point = args
+        return findLineBetweenRowsOfText(source_image, start_point)
+     # Use ThreadPoolExecutor for threading
+    with ThreadPoolExecutor(max_workers=len(start_points)) as executor:
+        futures = []
+        for start_point in start_points:
+            args = (sourceImage, start_point)
+            futures.append(executor.submit(findLineBetweenRowsOfTextWrapper, args))
+
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                paths_found.append(result)
+            except Exception as e:
+                print(f'Error processing start point: {e}')
+    
+    Statistics.PathsFound = len(paths_found)
+    
+    pathsOnImage = sourceImage.copy()
+    for path in paths_found:
+        pathsOnImage = draw_path_on_image(pathsOnImage,path)
+        cv2.imwrite(os.path.join(DEBUG_FOLDER, 'pathsOnImage.jpg'), pathsOnImage)
+        cv2.putText(pathsOnImage,f"{path[0][0]}",(5,path[0][0]),cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+        
+
+    cropped_rows = cropRowsFromImage(sourceImage,paths_found)
+
+    #for r, row in enumerate(cropped_rows):
+    #    cv2.imwrite(os.path.join('./segmentation', f'line_{r}.tiff'), row)
+
+    segmented_image = []
+    row_segmentations = []
+    for num, RowOfText in enumerate(cropped_rows):
+        segmented_row = []
+        pct_white = percentWhite(RowOfText)
+        
+        word_breaks = colTransitionPoints(RowOfText)
+        line_split_file = cv2.cvtColor(RowOfText.copy(), cv2.COLOR_GRAY2BGR)
+        for n, x in enumerate(word_breaks):
+            height, width, _ = line_split_file.shape
+            # Draw a vertical line from (x_value, 0) to (x_value, height)
+            line_split_file = cv2.line(line_split_file, (x, 0), (x, height), (0, 255, 0), 2)
+            cv2.putText(line_split_file, f"{n:03d}", (x+1, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 1)
+            #cv2.imwrite(os.path.join(os.getcwd(), './segmentation', f'line_{num:03d}_splits.tiff'), line_split_file )
+
+        words = cropTextFromRow(RowOfText,word_breaks)
+        for w, word in enumerate(words):
+            segmented_row.append(word)
+        
+        row_segmentations.append(line_split_file)
+        segmented_image.append(segmented_row)
+
+    #visual_debug(sourceImage,values=start_points,action='draw_lines',operation_name="test")
+    return segmented_image, row_segmentations
+
+   
 

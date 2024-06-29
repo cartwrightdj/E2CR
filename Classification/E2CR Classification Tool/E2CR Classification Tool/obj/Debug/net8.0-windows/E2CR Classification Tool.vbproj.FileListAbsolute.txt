@@ -1,0 +1,17 @@
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\bin\Debug\net8.0-windows\E2CR Classification Tool.exe
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\bin\Debug\net8.0-windows\E2CR Classification Tool.deps.json
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\bin\Debug\net8.0-windows\E2CR Classification Tool.runtimeconfig.json
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\bin\Debug\net8.0-windows\E2CR Classification Tool.dll
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\bin\Debug\net8.0-windows\E2CR Classification Tool.pdb
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR_Classification_Tool.Form1.resources
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.vbproj.GenerateResource.cache
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.AssemblyInfoInputs.cache
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.AssemblyInfo.vb
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.vbproj.CoreCompileInputs.cache
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.sourcelink.json
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.dll
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\refint\E2CR Classification Tool.dll
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.pdb
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\E2CR Classification Tool.genruntimeconfig.cache
+C:\Users\User\Documents\E2CR\Classification\E2CR Classification Tool\E2CR Classification Tool\obj\Debug\net8.0-windows\ref\E2CR Classification Tool.dll

@@ -1,57 +1,53 @@
 import cv2
-from common import DEBUG_FOLDER
-from imageman import preProcessImage, draw_path_on_image
-from segmentation import findTextSeperation
-import os
 import numpy as np
+import matplotlib.pyplot as plt
+from imageutils import shadeByDistanceBetweenInk
 
-image_path = r'E:\E2CR\debug\segmentation\cs_image.jpg'
-imageToTest = cv2.imread(image_path)
+# Define the image path
+image_path = r'C:\Users\User\Documents\E2CR\segmentation\seg_4159363_00361.jpg_006_009.tiff'
 
-# Summing the values along the third dimension (axis=2)
-summed_array = np.sum(imageToTest, axis=2)
-# Normalize the summed array
-min_val = np.min(summed_array)
-max_val = np.max(summed_array)
-normalized_array = (summed_array - min_val) / (max_val - min_val)
+# Load the image in grayscale
+image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
-# Scale to range [0, 255] and convert to uint8
-image_array = (normalized_array * 255).astype(np.uint8)
+# Apply shading function
+shadedImage = shadeByDistanceBetweenInk(image, mode='cols')
 
+# Calculate the sum of pixel values along each column
+column_sums = np.sum(image, axis=0)
 
-image_path = 'E:/E2CR/sample_images_for_ocr/4159363_00363.jpg'
-imageToSegment = cv2.imread(image_path)
+# Get the width of the image
+width = image.shape[1]
 
-ppImage = preProcessImage(imageToSegment.copy())
+# Calculate the mean and standard deviation of the column sums
+mean_x = np.mean(column_sums)
+std_x = np.std(column_sums)
 
-# Summing the values along the third dimension (axis=2)
-summed_array = np.sum(imageToTest, axis=2)
-# Normalize the summed array
-#min_val = np.min(summed_array)
-#max_val = np.max(summed_array)
-#normalized_array = (summed_array - min_val) / (max_val - min_val)
-image_array = image_array[:, ::-1]
-combined = cv2.bitwise_not(image_array * cv2.bitwise_not(ppImage))
-cv2.imwrite(os.path.join(DEBUG_FOLDER, 'combined_image.jpg'), combined)
+# Create subplots
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15), constrained_layout=True)
 
-# Calculate the sum of each row
-row_sums = np.sum(ppImage, axis=1)
+# Plot the original image
+ax1.imshow(image, cmap='gray', aspect='auto')
+ax1.set_title('Image')
+ax1.axis('off')
 
-# Set all elements in each row to the sum of that row
-new_array = np.zeros_like(ppImage)
-for i in range(ppImage.shape[0]):
-    new_array[i, :] = row_sums[i]
-cv2.imwrite(os.path.join(DEBUG_FOLDER, 'summed_array.jpg'), new_array)
+# Plot the column sums
+ax2.plot(column_sums, color='black')
+ax2.set_title('Column Sums')
+ax2.set_xlabel('Column Index')
+ax2.set_ylabel('Sum of Pixel Values')
+ax2.set_xlim([0, width])
 
-combined = cv2.bitwise_not(new_array * cv2.bitwise_not(ppImage))
+# Plot the mean line
+ax2.axhline(y=mean_x, color='blue', linestyle='--', label='Mean x')
+# Plot the standard deviation lines
+ax2.axhline(y=mean_x + std_x, color='green', linestyle='--', label='Mean x + 1 STD')
+ax2.axhline(y=mean_x - std_x, color='green', linestyle='--', label='Mean x - 1 STD')
+ax2.legend()
 
+# Plot the shaded image
+ax3.imshow(shadedImage, cmap='gray', aspect='auto')
+ax3.set_title('Shaded Image')
+ax3.axis('off')
 
-paths_found = findTextSeperation(combined, method='y_average',threshRate=94)
-    
-pathsOnImage = imageToTest.copy()
-for path in paths_found:
-    pathsOnImage = draw_path_on_image(new_array,path)
-    cv2.imwrite(os.path.join(DEBUG_FOLDER, 'pathsOnImage_new_array.jpg'), pathsOnImage)
-for path in paths_found:
-    pathsOnImage = draw_path_on_image(imageToSegment,path)
-    cv2.imwrite(os.path.join(DEBUG_FOLDER, 'baseImage_cumsum.jpg'), pathsOnImage)
+# Ensure the x-axis alignment is correct by setting the same limits
+plt.show()

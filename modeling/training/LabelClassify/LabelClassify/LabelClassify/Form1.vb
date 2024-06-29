@@ -1,5 +1,6 @@
 ﻿Imports System.IO
 Imports System.Drawing.Imaging
+Imports System.Text.RegularExpressions
 
 Public Class Form1
     Private images As List(Of String)
@@ -40,9 +41,10 @@ Public Class Form1
         If FolderBrowserDialog1.ShowDialog() = DialogResult.OK Then
             selectedFolderPath = FolderBrowserDialog1.SelectedPath
             images = Directory.GetFiles(selectedFolderPath, "*.*").
-                Where(Function(f) Not Path.GetFileName(f).ToLower().Contains("splits") AndAlso
-                                  Not System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(f), "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$") AndAlso
-                                  (f.EndsWith(".jpg") OrElse f.EndsWith(".png") OrElse f.EndsWith(".bmp"))).ToList()
+                Where(Function(f) Not Path.GetFileName(f).ToLower().Contains("row_") AndAlso
+                                  Not Path.GetFileName(f).ToLower().Contains("mask") AndAlso
+                                  Not System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileNameWithoutExtension(f), "^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$") AndAlso
+                                  (f.EndsWith(".jpg") OrElse f.EndsWith(".png") OrElse f.EndsWith(".tiff"))).ToList()
             LoadLabels()
             If images.Count > 0 Then
                 currentIndex = 0
@@ -144,32 +146,37 @@ Public Class Form1
                     Dim resizedImage = ResizeImageToFit(img, PictureBox1.Width, PictureBox1.Height)
                     PictureBox1.Image = resizedImage
                     Dim imageName = Path.GetFileName(images(currentIndex))
-                    lblImageInfo.Text = $"Image {currentIndex + 1} of {images.Count} - {imageName} - Size: {img.Width}x{img.Height} pixels"
+
                     If labels.ContainsKey(imageName) Then
                         txtLabel.Text = labels(imageName)
                     Else
                         txtLabel.Text = "" ' Clear the text box for a new label
                     End If
 
-                    ' Check if there is a corresponding _splits.jpg file and load it
-                    Dim lineNumberMatch = System.Text.RegularExpressions.Regex.Match(imageName, "^line_(\d{3})")
-                    If lineNumberMatch.Success Then
-                        Dim lineNumber = lineNumberMatch.Groups(1).Value
-                        Dim splitsImagePath = Path.Combine(selectedFolderPath, $"line_{lineNumber}_splits.jpg")
+                    Dim wordFilePattern As String = "seg_(.*?)_(\d{3})_(\d{3})_(\d{3})\.tiff"
+                    Dim splitFilePattern As String = "row_(.*?)_(\d{3})\.tiff"
+
+                    ' Extract parts from the word file name
+                    Dim wordMatch As Match = Regex.Match(imageName, wordFilePattern)
+                    If wordMatch.Success Then
+                        Dim baseName As String = wordMatch.Groups(1).Value
+                        Dim lineNumber As String = wordMatch.Groups(2).Value
+
+                        ' Construct the corresponding splits file path
+                        Dim splitsImagePath As String = Path.Combine(selectedFolderPath, $"row_{baseName}_{lineNumber}.tiff")
+
                         If File.Exists(splitsImagePath) Then
                             Using splitsStream As New MemoryStream(File.ReadAllBytes(splitsImagePath))
-                                Dim splitsImg = Image.FromStream(splitsStream)
-                                Dim resizedSplitsImage = ResizeImageToFit(splitsImg, PictureBox2.Width, PictureBox2.Height)
+                                Dim splitsImg As Image = Image.FromStream(splitsStream)
+                                Dim resizedSplitsImage As Image = ResizeImageToFit(splitsImg, PictureBox2.Width, PictureBox2.Height)
                                 PictureBox2.Image = resizedSplitsImage
                             End Using
                         Else
-                            PictureBox2.Image = Nothing
+                            lblImageInfo.Text = "Could not find split file for " + splitsImagePath
                         End If
                     Else
-                        PictureBox2.Image = Nothing
+                        MoveToNextImage()
                     End If
-                Else
-                    MoveToNextImage()
                 End If
             End Using
         End If

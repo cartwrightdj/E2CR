@@ -2,13 +2,169 @@ import cv2
 import numpy as np
 from common import *
 from scipy.stats import kurtosis, skew, mode
-from skimage.measure import shannon_entropy
+#from skimage.measure import shannon_entropy
 from loguru import logger
-from segmentation import getLineStats
 from PIL import Image
 from PIL.ExifTags import TAGS
+from utils import *
+from skimage.util import view_as_blocks
+from scipy.stats import entropy
+import threading
 
-def calculate_average_pixel_value(image):
+ 
+def pre_process_image(ppImage, 
+                    fileHandle,
+                    removeBorder: bool = Parameters.preProcessing.removeBorder,
+                    applyDenoise: bool = Parameters.preProcessing.applyDenoise,
+                    applyErode: bool = Parameters.applyErode,
+                    erodeKernel: bool = Parameters.erodeKernel,
+                    useAdaptiveThreshold: bool = Parameters.preProcessing.thresHold.useAdaptiveThreshold,
+                    adaptiveBlockSize: int = Parameters.preProcessing.thresHold.adaptiveBlockSize,
+                    adaptiveC: int = Parameters.preProcessing.thresHold.adaptiveC,
+                    simple_threshold = Parameters.simple_threshold,
+                    simple_max_val = Parameters.simple_max_value,
+                    max_area_size = Parameters.max_area_size,
+                    rs_threshold_value = Parameters.rs_threshold_value,
+                    rs_max_value = Parameters.rs_max_value,
+                    applyDilation: bool = Parameters.applyDilation,
+                    dilateKernalSize = Parameters.applyDilation,
+                    applyMorphology: bool = Parameters.applyMorphology) -> np.ndarray:
+    """
+    Preprocess an image with optional denoising, adaptive thresholding, erosion, dilation, and morphology.
+
+    Arguments:
+    ppImage -- np.ndarray, the input image
+    pp_config -- dict, configuration parameters for preprocessing
+    imageDesc -- str, additional description for debug images
+
+    Returns:
+    ppImage -- np.ndarray, the preprocessed image
+    """
+    try:
+        logger.trace(f"preProcessImage: Handle:{fileHandle})")
+
+        # Check and convert to grayscale if necessary
+        if not is_grayscale(ppImage):
+            ppImage = cv2.cvtColor(ppImage, cv2.COLOR_BGR2GRAY)
+            logger.info("Converted to Grayscale")
+
+        # Ensure the image is of type uint8
+        ppImage = ppImage.astype(np.uint8)
+
+        # Detect and Remove Border
+        #if removeBorder:
+        #    step += 1
+        #    ppImage = remove_border(ppImage)
+        #    if DEBUG: save_debug_image(ppImage, "pp_Border_Removed")
+
+        if removeBorder:
+            ppImage = crop_to_border(ppImage)
+            if DEBUG: visual_debug(ppImage, action='save', operation_name=f"{fileHandle}_pp_crop_to_border")
+
+         # Apply denoising
+        if applyDenoise:
+            ppImage_prior = ppImage
+            ppImage = apply_denoising(ppImage)
+            if DEBUG: 
+                visual_debug(ppImage, action='save', operation_name=f"{fileHandle}_pp_denoised")
+                visual_debug(util_img_diff(ppImage_prior, ppImage), operation_name=f"{fileHandle}_pp_denoised_diff")
+            
+           
+        if useAdaptiveThreshold:              
+            ppImage = apply_adaptive_threshold(ppImage, adaptiveBlockSize,adaptiveC)
+            visual_debug(ppImage, operation_name=f"{fileHandle}_AdaptiveThreshold")
+        else:
+            ppImage = apply_simple_threshold(ppImage, simple_threshold, simple_max_val)
+        #visual_debug(ppImage, action='save', operation_name=f"Image After Threshold (Adaptive={useAdaptiveThreshold}")
+        
+        ppImage, loss = filterByConectedComponents(ppImage,method=FBCC_RECT,hw_ratio=7)
+        visual_debug(ppImage,action='save', operation_name=f"{fileHandle}_After Filter By CC")
+
+        ppImage, loss2 = filterByConectedComponents(ppImage,method=FBCC_AREA, min_area=40)
+        visual_debug(ppImage,action='save', operation_name=f"{fileHandle}_After Filter By CC_min")
+
+        hm = util_img_cc_lbl_hm(ppImage)
+        visual_debug(hm,action='save', operation_name="Contected Comp HeatMap 2,")
+
+        ppImage , loss3 =filterByConectedComponents(ppImage,method=FBCC_SIZE, max_size=100000)
+        visual_debug(ppImage,action='save', operation_name=f"{fileHandle}_After Filter By CC_max_size")
+
+        Statistics.filterByConectedComponents_loss = [loss,loss2,loss3]
+        #ppImage = filterByConectedComponents(ppImage,method=FBCC_AREA,max_area=3000)       
+
+        visual_debug(ppImage, operation_name=f"{fileHandle}_Before_LineRemoval")
+        if False: # lines removal
+            print("trying to remove")
+            ppImage = remove_lines(ppImage)
+        
+        logger.info("Finished image preprocessing")
+        if DEBUG: visual_debug(ppImage,action='save',operation_name=f"{fileHandle}_Image Pre-Processing Final Result")
+        return ppImage
+    except Exception as e:
+        logger.error(f"Error during preprocessing: {e.with_traceback}")
+        raise
+
+def crop_to_border(image):
+    """
+    Crop the image to the border where significant content exists.
+
+    Args:
+        image (np.array): The input image.
+
+    Returns:
+        np.array: The cropped image containing only the significant content.
+    """
+    # Ensure the image is not empty
+    if image is None or image.size == 0:
+        raise ValueError("Input image is empty or invalid")
+
+    # Check if the input is a color image and keep the original
+    is_color = len(image.shape) == 3
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if is_color else image
+
+    # Calculate the sum of pixels for each row and column
+    row_sums = np.sum(gray_image, axis=1)
+    col_sums = np.sum(gray_image, axis=0)
+
+    # Find the rows and columns where the sums exceed a threshold
+    row_threshold = np.mean(row_sums) * 0.5
+    col_threshold = np.mean(col_sums) * 0.5
+
+    rows_with_content = np.where(row_sums > row_threshold)[0]
+    cols_with_content = np.where(col_sums > col_threshold)[0]
+
+    if len(rows_with_content) == 0 or len(cols_with_content) == 0:
+        return image  # No significant content found, return the original image
+
+    # Determine the bounding box of the content
+    y_min, y_max = rows_with_content[0], rows_with_content[-1]
+    x_min, x_max = cols_with_content[0], cols_with_content[-1]
+
+    # Crop the image to the bounding box
+    cropped_image = image[y_min:y_max, x_min:x_max]
+
+    return cropped_image
+
+def getRowBoundries(line):
+    """
+    Compute the minimum and maximum y-coordinates for a given line.
+
+    Args:
+        line (list of tuples): A line represented by a list of (y, x) points.
+
+    Returns:
+        tuple: Minimum and maximum y-coordinates of the line.
+    """
+    if not line:
+        raise ValueError("Line is empty")
+
+
+    min_y = min(y for y, x in line)
+    max_y = max(y for y, x in line)
+
+    return min_y, max_y
+
+def avgPixelValue(image):
     """
     Calculate the average pixel value of the entire image.
 
@@ -20,12 +176,33 @@ def calculate_average_pixel_value(image):
     """
     return int(np.mean(image))
 
-def remove_border(image):
+def calculate_average_of_adjacent_pixels(image, y, x, direction='row'):
     """
-    Replace irregular black border from an image with the average pixel value of the whole image using histograms of pixel sums.
+    Calculate the average value of the 5 adjacent pixels in the specified direction.
+    
+    Args:
+        image (np.array): The input image.
+        y (int): The y-coordinate of the pixel.
+        x (int): The x-coordinate of the pixel.
+        direction (str): The direction to calculate the average ('row' or 'column').
+
+    Returns:
+        float: The average value of the 5 adjacent pixels.
+    """
+    if direction == 'row':
+        adjacent_pixels = image[y, max(0, x-5):x] + image[y, x+1:min(image.shape[1], x+6)]
+    elif direction == 'column':
+        adjacent_pixels = image[max(0, y-5):y, x] + image[y+1:min(image.shape[0], y+6), x]
+
+    return np.mean(adjacent_pixels)
+
+def remove_border(image, side_threshold=200):
+    """
+    Replace irregular black border from an image with the average pixel value of the nearest 10 pixels within the specified threshold.
 
     Args:
         image (np.array): The input image.
+        side_threshold (int): The number of pixels to consider from the sides for border detection.
 
     Returns:
         np.array: The image with the black border replaced, retaining the same color channels.
@@ -40,10 +217,6 @@ def remove_border(image):
     # Check if the input is a color image and keep the original
     is_color = len(image.shape) == 3
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if is_color else image
-
-    # Calculate the average pixel value of the entire image
-    average_pixel_value = calculate_average_pixel_value(gray_image)
-    logger.debug(f"Average pixel value: {average_pixel_value}")
 
     # Calculate the sum of pixels for each row and column
     row_sums = np.sum(gray_image, axis=1)
@@ -67,62 +240,46 @@ def remove_border(image):
     x_min, x_max = cols_with_content[0], cols_with_content[-1]
     logger.info(f"Bounding box - y_min: {y_min}, y_max: {y_max}, x_min: {x_min}, x_max: {x_max}")
 
-    # Create a mask for the border
-    mask = np.ones_like(gray_image, dtype=np.uint8) * 255
-    mask[y_min:y_max+1, x_min:x_max+1] = 0
+    # Create a mask for the area outside the side_threshold
+    mask = np.zeros_like(gray_image, dtype=np.uint8)
+    mask[y_min:y_max+1, x_min:x_max+1] = 255
 
-    # Replace the border with the average pixel value
-    border_indices = np.where(mask == 255)
-    gray_image[border_indices] = average_pixel_value
+    # Replace the border with the average of the nearest 5 adjacent pixels in the row or column
+    for y in range(mask.shape[0]):
+        for x in range(mask.shape[1]):
+            if mask[y, x] == 0:
+                if y < y_min or y > y_max or x < x_min or x > x_max:
+                    if y < y_min:
+                        avg_pixel_value = calculate_average_of_adjacent_pixels(gray_image, y_min, x, 'column')
+                    elif y > y_max:
+                        avg_pixel_value = calculate_average_of_adjacent_pixels(gray_image, y_max, x, 'column')
+                    elif x < x_min:
+                        avg_pixel_value = calculate_average_of_adjacent_pixels(gray_image, y, x_min, 'row')
+                    elif x > x_max:
+                        avg_pixel_value = calculate_average_of_adjacent_pixels(gray_image, y, x_max, 'row')
+                    gray_image[y, x] = avg_pixel_value
 
     if is_color:
         # If the image was originally in color, apply the changes to each channel
         for i in range(3):
             channel = image[:, :, i]
-            channel[border_indices] = average_pixel_value
+            for y in range(mask.shape[0]):
+                for x in range(mask.shape[1]):
+                    if mask[y, x] == 0:
+                        if y < y_min or y > y_max or x < x_min or x > x_max:
+                            if y < y_min:
+                                avg_pixel_value = calculate_average_of_adjacent_pixels(channel, y_min, x, 'column')
+                            elif y > y_max:
+                                avg_pixel_value = calculate_average_of_adjacent_pixels(channel, y_max, x, 'column')
+                            elif x < x_min:
+                                avg_pixel_value = calculate_average_of_adjacent_pixels(channel, y, x_min, 'row')
+                            elif x > x_max:
+                                avg_pixel_value = calculate_average_of_adjacent_pixels(channel, y, x_max, 'row')
+                            channel[y, x] = avg_pixel_value
             image[:, :, i] = channel
         return image
     else:
         return gray_image
-    
-def removeSpackle(image, area_threshold=DefaultParameters.max_area_size):
-    """
-    Remove small black areas surrounded by white in an image.
-
-    Args:
-        image (np.array): The input image.
-        area_threshold (int): Threshold area to determine which black areas to remove.
-
-    Returns:
-        np.array: The processed image with small black areas removed.
-    """
-    if not isinstance(image, np.ndarray):
-        raise TypeError("Input must be a numpy.ndarray")
-
-    # Convert to grayscale if the input is a color image
-    if len(image.shape) == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # Apply thresholding to create a binary image
-    _, binary = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY_INV)
-    
-    # Find connected components
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
-    
-    # Create an output image initialized to white
-    output_image = np.ones_like(image) * 255
-    
-    # Loop through the components
-    for i in range(1, num_labels):  # Skip the background label 0
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area >= area_threshold:
-            # Keep the component if its area is larger than the threshold
-            output_image[labels == i] = 0
-    
-    # Invert the image back to original format (black text on white background)
-    #output_image = cv2.bitwise_not(output_image)
-    
-    return output_image
 
 def draw_line(image, position, orientation='vertical', color=(0, 255, 0), thickness=2):
     """
@@ -169,9 +326,7 @@ def draw_path_on_image(image, path, axis='y',thickness=2):
         output_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     else:
         output_image = image
-    
-    logger.debug(f"Path length: {len(path)}")
-    
+        
     #for (cy, cx) in path:
     #    output_image[cy, cx] = [255, 0, 0]
     for (cy, cx) in path:
@@ -270,28 +425,28 @@ def cropRowsFromImage(image, lines, axis='y'):
             if axis == 'y':
                 #logger.debug(f"Processing from top of the image to line {i}")
                 y_start = 0
-                _, y_end = getLineStats(lines[i])
+                _, y_end = getRowBoundries(lines[i])
                 mask_pts.extend([[0, 0]])
                 mask_pts.extend([[x, y] for y, x in lines[i]])
                 mask_pts.extend([[width, 0]])
             else:
                 #logger.debug(f"Processing from left of the image to line {i}")
                 x_start = 0
-                x_end, _ = getLineStats(lines[i])
+                x_end, _ = getRowBoundries(lines[i])
                 mask_pts.extend([[0, 0]])
                 mask_pts.extend([[x, y] for y, x in lines[i]])
                 mask_pts.extend([[0, height]])
         elif i == len(lines) - 1:
             if axis == 'y':
                 #logger.debug(f"Processing between line {i-1} and bottom of the image")
-                _, y_start = getLineStats(lines[i-1])
+                _, y_start = getRowBoundries(lines[i-1])
                 y_end = height
                 mask_pts.extend([[x, y] for y, x in lines[i-1]])
                 mask_pts.extend([[x, y] for y, x in lines[i]][::-1])
                 mask_pts.extend([[width, height], [0, height]])
             else:
                 #logger.debug(f"Processing between line {i-1} and right of the image")
-                x_start, _ = getLineStats(lines[i-1])
+                x_start, _ = getRowBoundries(lines[i-1])
                 x_end = width
                 mask_pts.extend([[x, y] for y, x in lines[i-1]])
                 mask_pts.extend([[x, y] for y, x in lines[i]][::-1])
@@ -299,14 +454,14 @@ def cropRowsFromImage(image, lines, axis='y'):
         else:
             if axis == 'y':
                #logger.debug(f"Processing between line {i-1} and line {i}")
-                y_start, _ = getLineStats(lines[i-1])
-                _, y_end = getLineStats(lines[i])
+                y_start, _ = getRowBoundries(lines[i-1])
+                _, y_end = getRowBoundries(lines[i])
                 mask_pts.extend([[x, y] for y, x in lines[i-1]])
                 mask_pts.extend([[x, y] for y, x in lines[i]][::-1])
             else:
                 #logger.debug(f"Processing between line {i-1} and line {i}")
-                x_start, _ = getLineStats(lines[i-1])
-                x_end, _ = getLineStats(lines[i])
+                x_start, _ = getRowBoundries(lines[i-1])
+                x_end, _ = getRowBoundries(lines[i])
                 mask_pts.extend([[x, y] for y, x in lines[i-1]])
                 mask_pts.extend([[x, y] for y, x in lines[i]][::-1])
 
@@ -335,8 +490,10 @@ def cropRowsFromImage(image, lines, axis='y'):
         else:
             logger.warning(f"Empty crop region: {('y_start' if axis == 'y' else 'x_start')}={y_start if axis == 'y' else x_start}, {('y_end' if axis == 'y' else 'x_end')}={y_end if axis == 'y' else x_end}")
 
-    logger.info("Finished cropping between lines")
+    logger.debug("Finished cropping between lines")
+    logger.trace(f"Cropped {len(cropped_images)} images")
     Statistics.text_rows = len(cropped_images)
+    
     return cropped_images
 
 def cropTextFromRow(image: np.ndarray, transitions: list[int]) -> list[np.ndarray]:
@@ -353,7 +510,6 @@ def cropTextFromRow(image: np.ndarray, transitions: list[int]) -> list[np.ndarra
     height, width = image.shape
     cropped_images = []
 
-    logger.info("Starting cropTextFromRow")
     logger.trace(f"cropTextFromRow(image.shape={image.shape}, transitions={transitions})")
 
     # Ensure transitions include the start and end of the image
@@ -361,8 +517,6 @@ def cropTextFromRow(image: np.ndarray, transitions: list[int]) -> list[np.ndarra
         transitions.insert(0, 0)
     if width - 1 not in transitions:
         transitions.append(width - 1)
-
-    logger.debug(f"Adjusted transitions: {transitions}")
 
     for i in range(len(transitions) - 1):
         start = transitions[i]
@@ -375,108 +529,21 @@ def cropTextFromRow(image: np.ndarray, transitions: list[int]) -> list[np.ndarra
 
         cropped_image = image[:, start:end]
         cropped_images.append(cropped_image)
-        logger.debug(f"Cropped image from {start} to {end}, resulting shape: {cropped_image.shape}")
+        logger.trace(f"Cropped image from {start} to {end}, resulting shape: {cropped_image.shape}")
 
-    logger.info(f"Finished cropping, produced {len(cropped_images)} cropped images")
+    logger.trace(f"Finished cropping, produced {len(cropped_images)} cropped images")
     
     return cropped_images
-
- 
-def preProcessImage(ppImage, removeBorder: bool = DefaultParameters.removeBorder,
-                    applyDenoise: bool = DefaultParameters.applyDenoise,
-                    applyErode: bool = DefaultParameters.applyErode,
-                    erodeKernel: bool = DefaultParameters.erodeKernel,
-                    useAdaptiveThreshold: bool = DefaultParameters.useAdaptiveThreshold,
-                    adaptiveBlockSize: int = DefaultParameters.adaptiveBlockSize,
-                    adaptiveC: int = DefaultParameters.adaptiveC,
-                    simple_threshold = DefaultParameters.simple_threshold,
-                    simple_max_val = DefaultParameters.simple_max_value,
-                    max_area_size = DefaultParameters.max_area_size,
-                    rs_threshold_value = DefaultParameters.rs_threshold_value,
-                    rs_max_value = DefaultParameters.rs_max_value,
-                    applyDilation: bool = DefaultParameters.applyDilation,
-                    dilateKernalSize = DefaultParameters.applyDilation,
-                    applyMorphology: bool = DefaultParameters.applyMorphology) -> np.ndarray:
-    """
-    Preprocess an image with optional denoising, adaptive thresholding, erosion, dilation, and morphology.
-
-    Arguments:
-    ppImage -- np.ndarray, the input image
-    pp_config -- dict, configuration parameters for preprocessing
-    imageDesc -- str, additional description for debug images
-
-    Returns:
-    ppImage -- np.ndarray, the preprocessed image
-    """
-    try:
-        logger.trace(f"preProcessImage Image)")
-
-        step = 0
-
-        # Check and convert to grayscale if necessary
-        if not is_grayscale(ppImage):
-            ppImage = cv2.cvtColor(ppImage, cv2.COLOR_BGR2GRAY)
-            logger.info("Converted to Grayscale")
-            logger.trace(f"is_grayscale(ppImage={ppImage.shape}) -> False")
-
-        # Ensure the image is of type uint8
-        ppImage = ppImage.astype(np.uint8)
-
-        # Detect and Remove Border
-        if removeBorder:
-            step += 1
-            ppImage = remove_border(ppImage)
-            if DEBUG: save_debug_image(ppImage, "pp_Border_Removed")
-        
-        # Apply denoising
-        if applyDenoise:
-            ppImage = apply_denoising(ppImage)
-            if DEBUG: save_debug_image(ppImage, "pp_Border_Removed")
-
-        # Apply erosion
-        if applyErode:
-            step += 1
-            ppImage = apply_erosion(ppImage, erodeKernel)
-
-        # Apply adaptive thresholding or simple thresholding
-        if useAdaptiveThreshold:
-            step += 1
-            ppImage = apply_adaptive_threshold(ppImage, adaptiveBlockSize,adaptiveC)
-        else:
-            step += 1
-            ppImage = apply_simple_threshold(ppImage, simple_threshold, simple_max_val.maxValue)
-
-        # Remove small black areas
-        if max_area_size:
-            ppImage = removeSpackle(ppImage, max_area_size, rs_threshold_value,rs_threshold_value )
-            step += 1
-            save_debug_image(ppImage, step, "SpotRemoval")
-
-        # Apply dilation
-        if applyDilation:
-            ppImage = apply_dilation(ppImage, dilateKernalSize)
-
-        # Apply morphological operations
-        if applyMorphology:
-            step += 1
-            ppImage = apply_morphology(ppImage)
-        
-        logger.info("Finished image preprocessing")
-        return ppImage
-    except Exception as e:
-        logger.error(f"Error during preprocessing: {e}")
-        raise
 
 def is_grayscale(image):
     logger.trace(f"is_grayscale(image.shape={image.shape})")
     return len(image.shape) == 2
 
-def apply_denoising(image,h = DefaultParameters.h,tWindowSize= DefaultParameters.tWindowSize,sWindowSize=DefaultParameters.sWindowSize ):
+def apply_denoising(image,h = Parameters.preProcessing.h,tWindowSize= Parameters.preProcessing.tWindowSize,sWindowSize=Parameters.preProcessing.sWindowSize ):
     logger.info("Applying Denoising to Image")
     logger.trace(f"PreProcessing - Apply Denoising(image.shape={image.shape}")
     logger.debug(f"h={h}, Template Window Size: {tWindowSize}, Search Window Size: {sWindowSize}")
     image = cv2.fastNlMeansDenoising(image, None, h, tWindowSize, sWindowSize)
-    if DEBUG:save_debug_image(image,"pp_Denoised_Image")
     return image
 
 def apply_erosion(image, kernel, step, imageDesc):
@@ -485,13 +552,27 @@ def apply_erosion(image, kernel, step, imageDesc):
     image = cv2.erode(image, kernel)
     return image
 
-def apply_adaptive_threshold(image, adaptiveBlockSize = DefaultParameters.adaptiveBlockSize, adaptiveC = DefaultParameters.adaptiveC):
+def calcBlockC(image):
+    mean_intensity = np.mean(image)
+    std_deviation = np.std(image)
+    median_intensity = np.median(image)
+    std_val = np.std(image)
+    block_size = int(2 * (std_deviation // 2) + 1)  # Must be an odd number
+    c_value = abs(mean_intensity - median_intensity)
+    if c_value < 15: c_value = 15
+    return block_size,  c_value
+
+def apply_adaptive_threshold(image, adaptiveBlockSize = Parameters.preProcessing.thresHold.adaptiveBlockSize, adaptiveC = Parameters.preProcessing.thresHold.adaptiveC):
     logger.info("Using Adaptive Thresholding")
+    if adaptiveC is None: adaptiveBlockSize, _ = calcBlockC(image)
+    if adaptiveC is None: _, adaptiveC = calcBlockC(image)
+    adaptiveBlockSize, adaptiveC = calcBlockC(image)
     logger.trace(f"apply_adaptive_threshold(image.shape={image.shape}, adaptiveBlockSize: {adaptiveBlockSize},  adaptiveC: {adaptiveC})")
+    
     image = cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, adaptiveBlockSize, adaptiveC)
     return image
 
-def apply_simple_threshold(image, simple_threshold = DefaultParameters.simple_threshold, simple_max_value = DefaultParameters.simple_max_value):
+def apply_simple_threshold(image, simple_threshold = Parameters.simple_threshold, simple_max_value = Parameters.simple_max_value):
     logger.info("Using Simple Thresholding")
     logger.trace(f"apply_simple_threshold(image.shape={image.shape}, simple_threshold={simple_threshold}, max_value={simple_max_value})")
     _, image = cv2.threshold(image, simple_threshold, simple_max_value, cv2.THRESH_BINARY)
@@ -504,81 +585,12 @@ def apply_dilation(image, kernel_size):
     image = cv2.dilate(image, kernel, iterations=1)
     return image
 
-def apply_morphology(image, morphKernelSize = DefaultParameters.morphKernelSize ):
+def apply_morphology(image, morphKernelSize = Parameters.morphKernelSize ):
     logger.info("Applying Morphological Operations")
     logger.trace(f"apply_morphology(image.shape={image.shape}, morphKernelSize: {morphKernelSize}")
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, morphKernelSize)
     image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
     return image
-
-def removeSpackle(image, max_area_size=DefaultParameters.max_area_size, 
-                  threshold_value=DefaultParameters.rs_threshold_value, 
-                  max_value=DefaultParameters.rs_max_value, 
-                  connectivity=DefaultParameters.connectivity):
-    """
-    Remove small black areas surrounded by white in an image.
-
-    Args:
-        image (np.array): The input image.
-        area_threshold (int): Threshold area to determine which black areas to remove.
-                              Any connected component (black area) with an area smaller
-                              than this threshold will be removed.
-        threshold_value (int): The threshold value used to binarize the image.
-                              Pixels with a value greater than or equal to this value 
-                              are set to 0 (black) and the rest to max_value (white) 
-                              when using cv2.THRESH_BINARY_INV.
-        max_value (int): The maximum value to use with the THRESH_BINARY_INV thresholding.
-        connectivity (int): Connectivity to use when finding connected components. 
-                            4 for 4-way connectivity, 8 for 8-way connectivity.
-
-    Returns:
-        np.array: The processed image with small black areas removed.
-    """
-    logger.trace(f"Starting removeSpackle(image.shape={image.shape}, area_threshold={max_area_size}, threshold_value={threshold_value}, max_value={max_value}, connectivity={connectivity})")
-
-    # Ensure the input is a numpy array
-    if not isinstance(image, np.ndarray):
-        raise TypeError("Input must be a numpy.ndarray")
-
-    # Convert to grayscale if the input is a color image
-    if len(image.shape) == 3:
-        logger.debug("Converting color image to grayscale.")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # Apply thresholding to create a binary image (invert the binary image to get black areas as white)
-    logger.debug("Applying binary thresholding.")
-    _, binary = cv2.threshold(image, threshold_value, max_value, cv2.THRESH_BINARY_INV)
-
-    # Find connected components
-    logger.debug("Finding connected components.")
-    # connectedComponentsWithStats finds all connected components in a binary image.
-    # It returns the number of labels, the label matrix, the stats matrix, and the centroids matrix.
-    # - num_labels: Number of labels (including background).
-    # - labels: Label matrix where each connected component is assigned a unique label.
-    # - stats: Statistics for each label, including bounding box and area (cv2.CC_STAT_*).
-    # - centroids: Centroids of each connected component.
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=connectivity)
-
-    # Create an output image initialized to white
-    output_image = np.ones_like(image) * 255
-
-    # Loop through the components
-    logger.debug(f"Processing {num_labels - 1} connected components.")
-    rem_count = 0
-    for i in range(1, num_labels):  # Skip the background label 0
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area >= max_area_size:
-            # Keep the component if its area is larger than the threshold
-            output_image[labels == i] = 0
-        else:
-            rem_count += 1
-
-    logger.trace(f"Completed removeSpackle. removed {rem_count}")
-    return output_image
-
-def save_debug_image(image, step=0, Description='DEBUG'):
-    debug_path = os.path.join(DEBUG_FOLDER, f"Step_{step}_{Description}.png")
-    cv2.imwrite(debug_path, image)
 
 def percentWhite(image: np.ndarray) -> float:
     """
@@ -591,24 +603,25 @@ def percentWhite(image: np.ndarray) -> float:
         float: Percentage of white pixels in the image.
     """
     # Binarize the image to ensure it contains only 0 and 255 pixel values
-    _, binary_image = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+    #_, binary_image = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
 
     # Count the number of white pixels (255)
-    white_pixel_count = np.sum(binary_image == 255)
-    total_pixel_count = binary_image.size
+    white_pixel_count = np.sum(image == 255)
+    height, width = image.shape[:2]
+    total_pixel_count = height * width
 
     # Calculate the percentage of white pixels
     white_pixel_percentage = (white_pixel_count / total_pixel_count) * 100
 
     return white_pixel_percentage
 
-def crop_image_to_content(image, buffer=2):
+def crop_image_to_content(image, frame=2):
     """
-    Crop the image to its content (black pixels) and add a buffer around the edges.
+    Crop the image to its content (black pixels) and add a frame around the edges.
 
     Args:
         image : the input image.
-        buffer (int): Number of pixels to add as a buffer around the content.
+        frame (int): Number of pixels to add as a frame around the content.
 
     Returns:
         np.ndarray: The cropped image.
@@ -621,11 +634,11 @@ def crop_image_to_content(image, buffer=2):
     coords = cv2.findNonZero(255 - image)  # Invert the image to find black pixels
     x, y, w, h = cv2.boundingRect(coords)
 
-    # Add buffer to the bounding box
-    x_start = max(x - buffer, 0)
-    y_start = max(y - buffer, 0)
-    x_end = min(x + w + buffer, image.shape[1])
-    y_end = min(y + h + buffer, image.shape[0])
+    # Add frame to the bounding box
+    x_start = max(x - frame, 0)
+    y_start = max(y - frame, 0)
+    x_end = min(x + w + frame, image.shape[1])
+    y_end = min(y + h + frame, image.shape[0])
 
     # Crop the image
     cropped_image = image[y_start:y_end, x_start:x_end]
@@ -633,7 +646,7 @@ def crop_image_to_content(image, buffer=2):
     return cropped_image
 
 def print_image_info(image_path):
-    # Load the image using OpenCV
+    #Load the image using OpenCV
     image = cv2.imread(image_path)
     
     if image is None:
@@ -682,13 +695,220 @@ def print_image_info(image_path):
         print(f"  Mean Value: {np.mean(image)}")
         print(f"  Standard Deviation: {np.std(image)}")
 
-def process_images_in_folder(folder_path):
-    # Supported image extensions
-    supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
+def visual_debug(dbg_image: np.array,axis='y',values=[], action='None', operation_name='DEBUG',alternate=False):
+    logger.trace(f"Visual Debug: action:{action}")
+    dbg_image = dbg_image.copy()
+    
+    if action == 'draw_lines':
+        if len(dbg_image.shape) == 2:
+            dbg_image = cv2.cvtColor(dbg_image.copy(), cv2.COLOR_GRAY2BGR)
+        elif dbg_image.shape[2] == 3:
+            dbg_image = dbg_image.copy()
+        else:
+            logger.warning(f"Could not saved debug image for {operation_name} to: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff')}")
 
-    # Iterate through all files in the folder
-    for root, _, files in os.walk(folder_path):
-        for file in files:
-            if any(file.lower().endswith(ext) for ext in supported_extensions):
-                image_path = os.path.join(root, file)
-                print_image_info(image_path)
+        c = Colors.RED
+        for v in values:
+            if axis == 'y':
+                dbg_image = cv2.line(dbg_image, (0, int(v)), (dbg_image.shape[1], int(v)), color=c, thickness=2)
+                cv2.putText(dbg_image, f"y:{v}", (25, v - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+            else:
+                dbg_image = cv2.line(dbg_image, (int(v), 0), (int(v), dbg_image.shape[0]), color=c, thickness=2)
+                cv2.putText(dbg_image, f"x:{v}", (v + 5, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, Colors.BLUE, 2)
+            c = Colors.BLUE if c == Colors.RED else Colors.RED
+            if alternate: c = Colors.BLUE if c == Colors.RED else Colors.RED
+        cv2.imwrite(os.path.join(DEBUG_FOLDER, f'dbg_{operation_name}.tiff'), dbg_image)
+        logger.trace(f"Saved debug image for {operation_name} to: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff')}")
+
+    if action == 'draw_paths':
+        if len(dbg_image.shape) == 2:
+            dbg_image = cv2.cvtColor(dbg_image.copy(), cv2.COLOR_GRAY2BGR)
+        elif dbg_image.shape[2] == 3:
+            dbg_image = dbg_image.copy()
+        else:
+            logger.warning(f"Could not saved debug image for {operation_name} to: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff')}")
+
+        for v in values:
+            dbg_image = draw_path_on_image(dbg_image,v)
+        save_results = cv2.imwrite(os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff'), dbg_image) 
+        if save_results:   
+            logger.trace(f"Saved debug image for {operation_name} to: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff')}")
+        else:
+            logger.warning(f"Failed to save debug image for {operation_name} to: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff')}")
+
+        dbg_v += 1
+    
+    if action == 'save':
+        if not cv2.imwrite(os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff'), dbg_image):
+            logger.critical(f"Could not save: {os.path.join(DEBUG_FOLDER, f'{operation_name}.tiff'),}")
+
+def filterByConectedComponents(image, method,
+                               threshold=128,  # Default threshold value
+                               hw_ratio=2.0,   # Default height-to-width ratio
+                               min_area = None,
+                               max_area = None,
+                               max_size = None,
+                               frame=10,       # Default frame size
+                               area_threshold=0,
+                               area_threshold_ratio=0.01):
+    
+    logger.debug(f"Filtering (Removing) Connected Components: method:{method}, threshold:{threshold}, hw_ratio:{hw_ratio}, frame:{frame}, area_threshold:{area_threshold}, area_threshold_ratio:{area_threshold_ratio}")
+
+    # Convert to grayscale if the image is not already
+    if len(image.shape) == 3 and image.shape[2] == 3:
+        logger.warning("This function received a non-grayscale image, results will not be accurate")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    height, width = image.shape[:2]
+
+    # Initialize the mask to keep valid connected components
+    fcc_mask = np.zeros_like(image)
+    fcc_mask[:] = 255
+
+    # Thresholding to create a binary image
+    _, binary_thresh = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY_INV)
+
+    # Connected component analysis
+    num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(binary_thresh)
+    logger.trace(f"Found {num_labels} Connected Components")
+
+    # Extract stats for connected components, excluding the background (label 0)
+    x = stats[1:, cv2.CC_STAT_LEFT]
+    y = stats[1:, cv2.CC_STAT_TOP]
+    w = stats[1:, cv2.CC_STAT_WIDTH]
+    h = stats[1:, cv2.CC_STAT_HEIGHT]
+    area = stats[1:, cv2.CC_STAT_AREA]
+    size = np.multiply(h, w)  # Correctly compute the size as an array
+
+    # Calculate height-to-width ratio and determine valid labels
+    hwratio = np.maximum(w / h, h / w)
+    valid_labels = np.ones(num_labels - 1, dtype=bool)
+
+    if method & CC_FRAME == CC_FRAME:
+        valid_labels &= (x >= frame) & (x + w <= width - frame) & (y >= frame) & (y + h <= height - frame)
+
+    if method & FBCC_RECT == FBCC_RECT:
+        valid_labels &= hwratio <= hw_ratio
+
+    if method & FBCC_SIZE == FBCC_SIZE:
+        logger.trace(f"Removed  with size larger than: {max_size}")
+        valid_labels &= size <= max_size
+
+    if method & FBCC_AREA == FBCC_AREA:
+        if not min_area is None:
+            valid_labels &= (area >= min_area) 
+        if not max_area is None:
+            valid_labels &= (area <= max_area)
+
+
+    remaining_labels = np.where(valid_labels)[0] + 1
+    removed_labels = np.where(~valid_labels)[0] + 1
+
+    # Remove invalid connected components
+    for label in tqdm(remaining_labels, desc="Removing Filtered Connected Components"):
+        fcc_mask[labels_im == label] = 0
+
+    logger.debug(f"Filtering (Removing) Connected Components removed {num_labels - len(remaining_labels) - 1} connected components")
+    logger.trace(f"Removed labels: {removed_labels}")
+
+    loss = (len(remaining_labels)  / num_labels) * 100
+    removed_stats = stats[removed_labels]
+    
+    return fcc_mask, loss
+
+def usingBlackInk(image: np.array, threshold: int = 50) -> float:
+    """
+    Calculate the percentage of black or near-black pixels in an image.
+
+    Parameters:
+    image (np.array): Input image, can be grayscale or color.
+    threshold (int): Pixel value below which pixels are considered black or near-black.
+
+    Returns:
+    float: Percentage of black or near-black pixels in the image.
+    """
+    # Convert to grayscale if the image is not already grayscale
+    if len(image.shape) == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Calculate the total number of pixels
+    total_pixels = image.size
+
+    # Calculate the number of black or near-black pixels
+    black_pixels = np.sum(image <= threshold)
+
+    # Calculate the percentage
+    black_pixel_percentage = (black_pixels / total_pixels) 
+
+
+
+    return black_pixel_percentage
+
+def find_text_contours(binary_image):
+    # Find contours in the binary image
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours
+
+def extract_contours(image):
+    contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Sort contours by the x value of the bounding rectangle
+    contours = sorted(contours, key=lambda contour: cv2.boundingRect(contour)[0])
+
+    extracted_contours = []
+    for i, contour in enumerate(contours):
+        # Get the bounding box for each contour
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        # Create a mask for the contour
+        mask = np.zeros_like(image)
+        cv2.drawContours(mask, [contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+        
+        # Extract the ROI using the mask
+        roi = cv2.bitwise_and(image, mask)
+        roi = roi[y:y+h, x:x+w]
+        extracted_contours.append(roi)
+    return extracted_contours
+
+def resize_and_pad(image, target_height=64, target_width=256):
+    # Get original dimensions
+    original_height, original_width = image.shape[:2]
+
+    # Calculate aspect ratio
+    aspect_ratio = original_width / original_height
+
+    # Calculate new dimensions while maintaining aspect ratio
+    if aspect_ratio > (target_width / target_height):
+        # Width is the constraining dimension
+        new_width = target_width
+        new_height = int(target_width / aspect_ratio)
+    else:
+        # Height is the constraining dimension
+        new_height = target_height
+        new_width = int(target_height * aspect_ratio)
+
+    # Resize the image
+    resized_image = cv2.resize(image, (new_width, new_height))
+
+    # Create a new image of the target size with a black background
+    padded_image = np.zeros((target_height, target_width), dtype=np.uint8)
+
+    # Calculate padding offsets
+    x_offset = (target_width - new_width) // 2
+    y_offset = (target_height - new_height) // 2
+
+    # Copy the resized image into the center of the padded image
+    padded_image[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_image
+
+    return padded_image
+
+def postProcessSegment(image: np.array,whiteThreshold = 99) -> np.array:
+    height, width = image.shape[:2]
+    image = crop_image_to_content(image)
+    pct_white = percentWhite(image)
+    if pct_white < whiteThreshold and (height > 20 and width > 20):
+        image = np.bitwise_not(image)
+        #image = resize_and_pad(image)
+        image[image != 0] = 255
+        return image
+    return None

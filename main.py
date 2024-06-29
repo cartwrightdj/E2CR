@@ -1,58 +1,85 @@
+import argparse
 import cv2
 import os
-#import matplotlib.pyplot as plt
-from common import DefaultParameters, Statistics, DEBUG_FOLDER
-from imageman import preProcessImage, cropRowsFromImage, draw_path_on_image, cropTextFromRow, percentWhite, crop_image_to_content, process_images_in_folder
-from segmentation import findTextSeperation, colTransitionPoints
-from loguru import logger
+from common import logging, logger, Parameters, DEBUG, DEBUG_FOLDER, Statistics,  stats, Colors
+from imageman import pre_process_image, postProcessSegment,extract_contours
+from imageutils import get_image_stats
+from segmentation import segment_image
+import glob
 
 
-# Paths
-image_path = 'E:/E2CR/sample_images_for_ocr/R. 317 (2).jpg'
-imageToSegment = cv2.imread(image_path)
 
-def getTextFromImage(image_path: str):
-    Parameters = DefaultParameters()
-    logger.info(f"Loading image from {image_path}")
-    imageToSegment = cv2.imread(image_path)
+parser = argparse.ArgumentParser(
+                    prog='Early English Cursive Recognition',
+                    description='Segment Scanned 18th Cenruty Documnets, OCR, adn transcribe',
+                    epilog='Text at the bottom of help')
 
-    # Preprocessing
-    ppImage = preProcessImage(imageToSegment.copy(),Parameters)
-    cv2.imwrite(os.path.join(DEBUG_FOLDER, '0_PreProcessedImage.jpg'), ppImage)
+parser.add_argument("path",help="Path to image of folder of images to be processed")
+parser.add_argument("--So",help="Segment Only")
+parser.add_argument('--verbose', '-v',help="Verbose level" ,action='count', default=0,required=False)
+parser.add_argument('--params','-p',  help="Use Parameter Preset" ,nargs='?',required=False)
+parser.add_argument('--Params','-P',  help="Show Default Parameters Preset" , action='store_true')
+parser.add_argument('--Debug','-D',  help="Turn on Debugging, Implies TRACE Verbose Level" , action='store_true')
+
+
+action = parser.add_mutually_exclusive_group()
+action.add_argument('--PreProcess','-Pp', action='store_true')
+action.add_argument('--Segment','-S', action='store_true')
+action.add_argument('--Train','-T', action='store_true')
+
+args = parser.parse_args()
+
+
+if args.Params: print(Parameters.print_params())
+if args.verbose: logging(args.verbose)
+if args.Debug: 
+    DEBUG = True
+    logging(3)
+
+image_file_paths = [] 
+if os.path.isdir(args.path): 
+    image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.gif', '*.bmp', '*.tiff']
+    for extension in image_extensions:
+        image_file_paths.extend(glob.glob(os.path.join(args.path, extension)))
+    logger.info(f"Found {len(image_file_paths)} image files in {args.path}")  
+if os.path.isfile(args.path):
+    image_file_paths.append(args.path)
+
+if args.Segment:
+    logger.info(f"Segmentation Only on: '{args.path}'")
+
+for image_file_path in image_file_paths:
+    image_from_file = cv2.imread(image_file_path)
+    image_file_name = os.path.basename(image_file_path)
+    Statistics.fileName = image_file_name
+    get_image_stats(image_from_file)
+    print(f"Preprocessing {image_file_name}")
     
-    paths_found = findTextSeperation(ppImage)
-    
-    pathsOnImage = imageToSegment.copy()
-    for path in paths_found:
-        pathsOnImage = draw_path_on_image(pathsOnImage,path)
-    cv2.imwrite(os.path.join(DEBUG_FOLDER, 'pathsOnImage.jpg'), pathsOnImage)
-
-    if imageToSegment is not None:
-        RowsOfText = cropRowsFromImage(ppImage, paths_found)
+    pre_processed_image = pre_process_image(image_from_file,os.path.basename(image_file_path))
+ 
+    segmented_image, row_segmentations = segment_image(pre_processed_image)
+    print(f"rows: {len(segmented_image)}")
+    for r, segmented_row in enumerate(row_segmentations):
+        if not segmented_row is None:
+            cv2.imwrite(os.path.join(os.getcwd(), './segmentation', f'row_{image_file_name}_{r:03d}.tiff'), segmented_row )
         
-        for num, RowOfText in enumerate(RowsOfText):
-            
-            word_breaks = colTransitionPoints(RowOfText)
-            line_split_file = RowOfText.copy()
-            for x in word_breaks:
-                height, width = line_split_file.shape
-                # Draw a vertical line from (x_value, 0) to (x_value, height)
-                line_split_file = cv2.line(line_split_file, (x, 0), (x, height), (0, 255, 0), 2)
-                cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_splits.jpg'), line_split_file )
 
-            words = cropTextFromRow(RowOfText,word_breaks)
-            for w, word in enumerate(words):
-                crop = crop_image_to_content(word)
-                height, width = crop.shape
-                if not (((percentWhite(word) > 90) or (width < 26) or (height < 10))): 
-                    cv2.imwrite(os.path.join(os.getcwd(), 'output', f'line_{num:03d}_word_{w:03d}.jpg'), crop )
+    for r, row in enumerate(segmented_image):
+        print(f"words: {len(row)}")
+        for w, word in enumerate(row):
+            word = postProcessSegment(word)
+            if not word is None:
+                extracted_contours = extract_contours(word)
+                for c, contour in enumerate(extracted_contours):
+                    #cv2.imwrite(os.path.join(os.getcwd(), './segmentation', f'seg_{image_file_name}_{r:03d}_{w:03d}_{c:03d}.tiff'), contour )
+                    pass
+                    
+            else:
+                print(f"{image_file_name} line {r} word {w} was empty")
+            if not word is None:
+                cv2.imwrite(os.path.join(os.getcwd(), './segmentation', f'seg_{image_file_name}_{r:03d}_{w:03d}.tiff'), word )
+    
+    stats.append(Statistics)
 
-    else:
-        logger.error("Failed to load the image")
-
-
-getTextFromImage(image_path)
-
-DefaultParameters.print_defaults    
-Statistics.display()
-
+for stat in stats:
+    stat.display()

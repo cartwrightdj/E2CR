@@ -1,28 +1,21 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\",
+  "WorkspaceRootPath": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|e:\\e2cr\\modeling\\training\\labelclassify\\labelclassify\\labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}",
+      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|c:\\users\\user\\documents\\e2cr\\modeling\\training\\labelclassify\\labelclassify\\labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}",
       "RelativeMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|solutionrelative:labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form",
+      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form",
       "RelativeMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|solutionrelative:labelclassify\\form1.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\segmentedimage.designer.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}",
-      "RelativeMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|solutionrelative:labelclassify\\segmentedimage.designer.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|E:\\E2CR\\output\\line_016_word_013.jpg||{58961B49-13E0-48C0-9258-13CBC4D40279}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form",
+      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form",
       "RelativeMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|solutionrelative:labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}|Form"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}",
+      "AbsoluteMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}",
       "RelativeMoniker": "D:0:0:{985D9877-36F2-4C6B-9166-1466C39FA3EA}|LabelClassify\\LabelClassify.vbproj|solutionrelative:labelclassify\\segmentedimage.vb||{2C015C70-C72C-11D0-88C3-00A0C9110049}"
     }
   ],
@@ -39,11 +32,11 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "Form1.vb",
-              "DocumentMoniker": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
+              "DocumentMoniker": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
               "RelativeDocumentMoniker": "LabelClassify\\Form1.vb",
-              "ToolTip": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
+              "ToolTip": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
               "RelativeToolTip": "LabelClassify\\Form1.vb",
-              "ViewState": "AQIAABgAAAAAAAAAAAAAACoAAABeAAAA",
+              "ViewState": "AQIAAIgAAAAAAAAAAAAewJgAAAAYAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
               "WhenOpened": "2024-05-29T00:55:16.252Z",
               "EditorCaption": ""
@@ -51,59 +44,39 @@
             {
               "$type": "Document",
               "DocumentIndex": 3,
-              "Title": "line_016_word_013.jpg",
-              "DocumentMoniker": "E:\\E2CR\\output\\line_016_word_013.jpg",
-              "RelativeDocumentMoniker": "..\\..\\..\\..\\output\\line_016_word_013.jpg",
-              "ToolTip": "E:\\E2CR\\output\\line_016_word_013.jpg",
-              "RelativeToolTip": "..\\..\\..\\..\\output\\line_016_word_013.jpg",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001533|",
-              "WhenOpened": "2024-05-29T00:00:49.884Z"
+              "Title": "SegmentedImage.vb",
+              "DocumentMoniker": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
+              "RelativeDocumentMoniker": "LabelClassify\\SegmentedImage.vb",
+              "ToolTip": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
+              "RelativeToolTip": "LabelClassify\\SegmentedImage.vb",
+              "ViewState": "AQIAADQAAAAAAAAAAAA9wFsAAAAAAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
+              "WhenOpened": "2024-05-28T23:30:01.683Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 2,
-              "Title": "SegmentedImage.Designer.vb",
-              "DocumentMoniker": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.Designer.vb",
-              "RelativeDocumentMoniker": "LabelClassify\\SegmentedImage.Designer.vb",
-              "ToolTip": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.Designer.vb",
-              "RelativeToolTip": "LabelClassify\\SegmentedImage.Designer.vb",
-              "ViewState": "AQIAABoAAAAAAAAAAAAiwBsAAABTAAAA",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
-              "WhenOpened": "2024-05-28T23:32:52.133Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 5,
-              "Title": "SegmentedImage.vb",
-              "DocumentMoniker": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
-              "RelativeDocumentMoniker": "LabelClassify\\SegmentedImage.vb",
-              "ToolTip": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
-              "RelativeToolTip": "LabelClassify\\SegmentedImage.vb",
-              "ViewState": "AQIAADQAAAAAAAAAAAAswFsAAAAAAAAA",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
-              "WhenOpened": "2024-05-28T23:30:01.683Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 4,
               "Title": "SegmentedImage.vb [Design]",
-              "DocumentMoniker": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
+              "DocumentMoniker": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb",
               "RelativeDocumentMoniker": "LabelClassify\\SegmentedImage.vb",
-              "ToolTip": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb [Design]",
+              "ToolTip": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\SegmentedImage.vb [Design]",
               "RelativeToolTip": "LabelClassify\\SegmentedImage.vb [Design]",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
-              "WhenOpened": "2024-05-28T22:49:53.075Z"
+              "WhenOpened": "2024-05-28T22:49:53.075Z",
+              "EditorCaption": " [Design]"
             },
             {
               "$type": "Document",
               "DocumentIndex": 1,
               "Title": "Form1.vb [Design]",
-              "DocumentMoniker": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
+              "DocumentMoniker": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb",
               "RelativeDocumentMoniker": "LabelClassify\\Form1.vb",
-              "ToolTip": "E:\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb [Design]",
+              "ToolTip": "C:\\Users\\User\\Documents\\E2CR\\modeling\\training\\LabelClassify\\LabelClassify\\LabelClassify\\Form1.vb [Design]",
               "RelativeToolTip": "LabelClassify\\Form1.vb [Design]",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003361|",
-              "WhenOpened": "2024-05-28T16:43:34.136Z"
+              "WhenOpened": "2024-05-28T16:43:34.136Z",
+              "EditorCaption": " [Design]"
             }
           ]
         }
