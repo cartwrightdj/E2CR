@@ -3,7 +3,6 @@ import cv2
 import os
 from common import logging, logger, Parameters, DEBUG, DEBUG_FOLDER, Statistics,  stats, Colors
 from imageman import pre_process_image, postProcessSegment,extract_contours
-from imageutils import get_image_stats
 from segmentation import segment_image
 import glob
 
@@ -51,7 +50,8 @@ if args.Segment:
     logger.info(f"Segmentation Only on: '{args.path}'")
 
 for image_file_path in image_file_paths:
-    image_from_file = cv2.imread(image_file_path)
+    image_from_file = cv2.imread(image_file_path, cv2.IMREAD_GRAYSCALE)
+    #image_from_file = cv2.bitwise_not(image_from_file)
     image_file_name = os.path.basename(image_file_path)
     Statistics.fileName = image_file_name
     get_image_stats(image_from_file)

@@ -7,7 +7,7 @@ from heapq import heappop, heappush
 
 
 # Define the image path
-image_path = r'C:\Users\User\Documents\PythonProjects\E2CR\segmentation\row_4159363_00361.jpg_029.tiff'
+image_path = r'C:\Users\User\Documents\PythonProjects\E2CR\segmentation\row_4159363_00361.jpg_007.tiff'
 
 def findLineBetweenRowsOfText(image, start, axis='x',
                               log_cost_factor=1.0, 
@@ -281,7 +281,7 @@ def main():
     kernel = np.ones((5,5), np.uint8)  # 5x5 square kernel
 
     # Apply dilation
-    image = cv2.dilate(image, kernel, iterations=1)
+    image = cv2.dilate(image, kernel, iterations=2)
 
     height, width = image.shape
 
@@ -290,9 +290,12 @@ def main():
     mean_x = np.mean(row_sums)
     std_x = np.std(row_sums)
     max_x = np.max(row_sums)
+    max_y_index = np.argmax(row_sums)
     print(f"mean: {mean_x}, std:{std_x}, {mean_x+(.25*std_x)}")
 
     a, b = find_indices(row_sums,np.mean(row_sums))
+    a = max_y_index -5
+    b = max_y_index + 5
     print(f"{a= }, {b=}")
 
     trimmed_to_letter_body = image[a:b,0:width]
@@ -301,7 +304,7 @@ def main():
     plt.imshow(image, cmap='gray', aspect='equal')  # Show image with equal aspect ratio
     plt.axhline(y=a, color='r', linestyle='--', linewidth=2, label=f'Line at {a}')
     plt.axhline(y=b, color='b', linestyle='--', linewidth=2, label=f'Line at {b}')
-    plt.axhline(y=np.argmax(row_sums), color='y', linestyle='--', linewidth=2, label=f'Line at {b}')
+    plt.axhline(y=max_y_index, color='y', linestyle='--', linewidth=2, label=f'Line at {b}')
     
     plt.legend()
     plt.title("Image with Horizontal Lines")

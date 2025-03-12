@@ -9,7 +9,6 @@ from imageman import visual_debug, percentWhite, deskew
 import csv
 from imageman import draw_path_on_image, cropSegmentFromImage, cropTextFromRow,crop_image_to_content, percentWhite
 from plotting import *
-from imageutils import get_image_stats
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import heapq
 
@@ -109,8 +108,6 @@ def average_consecutive_distance(values):
     
     distances = [abs(values[i+1] - values[i]) for i in range(len(values) - 1)]
     return sum(distances) / len(distances)
-
-
 
 def findPathStartPoints(image: np.ndarray, axis: str = Parameters.axis,
                         expectedTextRowHeight: int = Parameters.expectedTextRowHeight,
@@ -920,7 +917,7 @@ def segment_image(sourceImage: np.array,axis='y',
         source_image, start_point = args
         return findLineBetweenRowsOfText2(source_image,start_point,gradients,avg_height)
      # Use ThreadPoolExecutor for threading
-    with ThreadPoolExecutor(max_workers=1) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         
         futures = []
         for start_point in start_points:

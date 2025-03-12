@@ -69,8 +69,20 @@ def pre_process_image(ppImage,
                 visual_debug(ppImage, action='save', operation_name=f"{fileHandle}_pp_denoised")
                 visual_debug(util_img_diff(ppImage_prior, ppImage), operation_name=f"{fileHandle}_pp_denoised_diff")
             
-           
-        if useAdaptiveThreshold:              
+        def _calcBlockC(image):
+            mean_intensity = np.mean(image)
+            std_deviation = np.std(image)
+            median_intensity = np.median(image)
+            std_val = np.std(image)
+            block_size = int(2 * (std_deviation // 2) + 1)  # Must be an odd number
+            c_value = abs(mean_intensity - median_intensity)
+            if c_value < 15: c_value = 15
+            return block_size,  c_value
+       
+        if useAdaptiveThreshold:  
+            Parameters.preProcessing
+            adaptiveBlockSize, adaptiveC = _calcBlockC(ppImage)
+            logger.debug(f'AdaptiveThreshold adaptiveBlockSize:{adaptiveBlockSize}, adaptiveC:{adaptiveC}')            
             ppImage = apply_adaptive_threshold(ppImage, adaptiveBlockSize,adaptiveC)
             visual_debug(ppImage, action='save', operation_name=f"{fileHandle}_AdaptiveThreshold")
         else:
